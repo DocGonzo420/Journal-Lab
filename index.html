@@ -233,9 +233,10 @@ const DEFAULTS = {
   weekStart:1, weekLayout:'grid',
   mt:12, mb:12, mi:14, mo:10, mirror:false,
   title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
-  paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true
+  paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
+  spread:false, bleedOn:false, bleed:2
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','bleedOn'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -259,6 +260,7 @@ function sanitize(s){
   if(!['auto','portrait','landscape'].includes(s.sheetOrient)) s.sheetOrient = 'auto';
   s.sheetMargin = num(s.sheetMargin,5,0,30); s.gap = num(s.gap,0,0,30);
   s.pages = Math.round(num(s.pages,4,1,200));
+  s.bleed = num(s.bleed,2,0.5,6);
   for(const k of BOOLS) s[k] = !!s[k];
   return s;
 }
@@ -300,8 +302,15 @@ function darken(hx,f){ const [r,g,b] = hexToRgb(hx); return rgbToHex(r*f,g*f,b*f
 const spacing = s => s.spacings[s.tpl] || 5;
 const dotRadius = w => 0.1 + w*0.32;
 
-function contentRect(s,p){
-  const innerLeft = !s.mirror || (p % 2 === 1);
+/* Bleed: dot grid, square grid and ruled patterns can fill the page and run
+   past its edges, so a slightly-off cut still looks clean. */
+const BLEED_TPLS = ['dots','grid','lined'];
+const bleedOf = s => s.bleedOn && BLEED_TPLS.includes(s.tpl) ? s.bleed : 0;
+/* Booklet spreads: two pages side by side, folded at the spine. */
+const pieceW = s => s.spread ? 2*s.w : s.w;
+
+function contentRect(s,p,inner){
+  const innerLeft = inner ? inner === 'left' : (!s.mirror || (p % 2 === 1));
   const l = innerLeft ? s.mi : s.mo, r = innerLeft ? s.mo : s.mi;
   return {x:l, y:s.mt, w:Math.max(1, s.w-l-r), h:Math.max(1, s.h-s.mt-s.mb), innerLeft};
 }
@@ -331,7 +340,7 @@ const TPL = {
   lined(s,B,C){
     const sp = spacing(s), n = Math.floor(B.h/sp + 1e-9);
     for(let i=1;i<=n;i++) C.ops.push(L(B.x, B.y+i*sp, B.x+B.w, B.y+i*sp, C.lw, C.line));
-    if(s.marginLine){ const mx = B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, B.y+n*sp, C.lw, C.line)); }
+    if(s.marginLine){ const mx = C.marginX != null ? C.marginX : B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, B.y+n*sp, C.lw, C.line)); }
   },
 
   cornell(s,B,C){
@@ -416,7 +425,7 @@ const TPL = {
 
 function buildPage(s,p,opt){
   opt = opt || {};
-  const ops = [], R = contentRect(s,p);
+  const ops = [], R = contentRect(s,p,opt.inner);
   const line = tint(s.color, s.intensity/100);
   const C = {
     ops, line, lw: s.weight*PT,
@@ -436,6 +445,15 @@ function buildPage(s,p,opt){
     ops.push(L(R.x, R.y+hh-1.2, R.x+R.w, R.y+hh-1.2, C.lw, C.line));
     B = {x:R.x, y:R.y+hh, w:R.w, h:Math.max(1, R.h-hh)};
   }
+  const bl = bleedOf(s);
+  if(bl){
+    // Fill the page and run past its edges. In a spread the spine side keeps its margin.
+    const spineLeft = !!opt.spread && R.innerLeft, spineRight = !!opt.spread && !R.innerLeft;
+    const x1 = spineLeft ? B.x : -bl, x2 = spineRight ? B.x + B.w : s.w + bl;
+    const y1 = (title || s.dateField) ? B.y : -bl;
+    B = {x:x1, y:y1, w:x2-x1, h:s.h + bl - y1};
+    C.marginX = R.x + Math.min(20, R.w*0.15);
+  }
   TPL[s.tpl](s,B,C,p);
   if(s.pageNums !== 'none'){
     const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
@@ -450,11 +468,27 @@ function buildPage(s,p,opt){
   return ops;
 }
 
+/* One printed piece: a single page, or a booklet spread of two pages with
+   fold ticks at the spine. Piece k holds pages 2k-1 and 2k. */
+function buildPiece(s,k,opt){
+  opt = opt || {};
+  if(!s.spread) return buildPage(s,k,opt);
+  const ops = [], bl = bleedOf(s);
+  place(buildPage(s, 2*k-1, Object.assign({}, opt, {inner:'right', spread:true})), 0, 0, 1, ops);
+  place(buildPage(s, 2*k, Object.assign({}, opt, {inner:'left', spread:true})), s.w, 0, 1, ops);
+  const tt = clamp(s.mt*0.4, 2, 4), tb = clamp(s.mb*0.4, 2, 4);
+  ops.push(L(s.w, -bl, s.w, tt, 0.25, '#555555'));
+  ops.push(L(s.w, s.h - tb, s.w, s.h + bl, 0.25, '#555555'));
+  if(opt.guides) ops.push(L(s.w, 0, s.w, s.h, 0.18, '#3b82f6', [1.2,1.2]));
+  return ops;
+}
+
 /* =====================================================================
    3. Sheet layout: how many pages fit on Letter or A4, and where
    ===================================================================== */
 function plan(s){
-  const P = PAPERS[s.paper], sm = s.sheetMargin, g = s.gap, pw = s.w, ph = s.h, eps = 1e-6;
+  const bl = bleedOf(s);
+  const P = PAPERS[s.paper], sm = s.sheetMargin, g = Math.max(s.gap, 2*bl), pw = pieceW(s), ph = s.h, eps = 1e-6;
   const mk = (sw,sh) => {
     const cols = Math.max(0, Math.floor((sw-2*sm+g+eps)/(pw+g)));
     const rows = Math.max(0, Math.floor((sh-2*sm+g+eps)/(ph+g)));
@@ -471,12 +505,13 @@ function plan(s){
   let cols = pick.cols, rows = pick.rows, sc = 1, scaled = false;
   if(cols < 1 || rows < 1){ cols = 1; rows = 1; sc = Math.max(0.05, pick.sc); scaled = true; }
   const per = cols*rows;
-  const total = s.fill ? Math.ceil(s.pages/per)*per : s.pages;
+  const want = s.spread ? Math.ceil(s.pages/2) : s.pages;
+  const total = s.fill ? Math.ceil(want/per)*per : want;
   const sheets = Math.ceil(total/per);
   const pageW = pw*sc, pageH = ph*sc;
   const tw = cols*pageW + (cols-1)*g, th = rows*pageH + (rows-1)*g;
   return {sw:pick.sw, sh:pick.sh, cols, rows, per, sc, scaled, total, sheets, pageW, pageH, tw, th,
-          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh};
+          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl};
 }
 
 function place(ops,tx,ty,sc,out){
@@ -496,17 +531,17 @@ function buildSheet(s,pl,idx,preview,guides){
     const p = start + i + 1;
     if(p > pl.total) break;
     const c = i % pl.cols, r = Math.floor(i/pl.cols);
-    const tx = pl.ox + c*(pl.pageW + s.gap), ty = pl.oy + r*(pl.pageH + s.gap);
-    place(buildPage(s,p,{guides}), tx, ty, pl.sc, ops);
+    const tx = pl.ox + c*(pl.pageW + pl.gap), ty = pl.oy + r*(pl.pageH + pl.gap);
+    place(buildPiece(s,p,{guides}), tx, ty, pl.sc, ops);
     if(preview) ops.push(RC(tx, ty, pl.pageW, pl.pageH, 0.2, '#9aa4b5', [1.5,1.5]));
   }
   if(s.cutMarks && !preview){
-    const len = Math.min(4, Math.min(pl.ox, pl.oy) - 1.8);
+    const o = pl.bleed*pl.sc + 1.2, len = Math.min(4, Math.min(pl.ox, pl.oy) - o - 0.6);
     if(len >= 1.5){
       const xs = new Set(), ys = new Set(), q = v => Math.round(v*100)/100;
-      for(let c=0;c<pl.cols;c++){ const x = pl.ox + c*(pl.pageW+s.gap); xs.add(q(x)); xs.add(q(x+pl.pageW)); }
-      for(let r=0;r<pl.rows;r++){ const y = pl.oy + r*(pl.pageH+s.gap); ys.add(q(y)); ys.add(q(y+pl.pageH)); }
-      const mw = 0.15, mc = '#555555', o = 1.2;
+      for(let c=0;c<pl.cols;c++){ const x = pl.ox + c*(pl.pageW+pl.gap); xs.add(q(x)); xs.add(q(x+pl.pageW)); }
+      for(let r=0;r<pl.rows;r++){ const y = pl.oy + r*(pl.pageH+pl.gap); ys.add(q(y)); ys.add(q(y+pl.pageH)); }
+      const mw = 0.15, mc = '#555555';
       xs.forEach(x => { ops.push(L(x, pl.oy-o-len, x, pl.oy-o, mw, mc)); ops.push(L(x, pl.oy+pl.th+o, x, pl.oy+pl.th+o+len, mw, mc)); });
       ys.forEach(y => { ops.push(L(pl.ox-o-len, y, pl.ox-o, y, mw, mc)); ops.push(L(pl.ox+pl.tw+o, y, pl.ox+pl.tw+o+len, y, mw, mc)); });
     }
@@ -592,7 +627,7 @@ async function makePDF(s,onProgress){
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildSheet, toSVG, contentRect};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect};
 }
 if(typeof document === 'undefined') return;
 
@@ -660,7 +695,9 @@ const SECTIONS = [
       get:s=>s.w>s.h?'landscape':'portrait', set:setOrient, after:matchPreset},
     {id:'w', t:'len', label:'Width', key:'w', min:20, max:600, after:matchPreset},
     {id:'h', t:'len', label:'Height', key:'h', min:20, max:600, after:matchPreset},
-    {id:'unit', t:'seg', label:'Units', opts:[['mm','Millimetres'],['in','Inches']], key:'unit'}
+    {id:'unit', t:'seg', label:'Units', opts:[['mm','Millimetres'],['in','Inches']], key:'unit'},
+    {id:'spread', t:'check', label:'Booklet spreads: two pages side by side, with fold marks', key:'spread'},
+    {id:'spreadHint', t:'hint', text:s=>'Each spread is '+fmtLen(2*s.w)+' × '+fmtLen(s.h)+' '+s.unit+'. Fold it in half at the small ticks at the top and bottom. Each page keeps its inner margin beside the fold.', show:s=>s.spread}
   ]},
   {t:'Page style', open:true, c:[
     {id:'tpl', t:'select', label:'Template', opts:TEMPLATES.map(t=>[t.v,t.l]), key:'tpl'},
@@ -705,7 +742,10 @@ const SECTIONS = [
     {id:'sheetOrient', t:'select', label:'Sheet orientation', opts:[['auto','Automatic (fits most pages)'],['portrait','Portrait'],['landscape','Landscape']], key:'sheetOrient'},
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
     {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30},
-    {id:'pages', t:'num', label:'Pages to print', key:'pages', min:1, max:200},
+    {id:'pages', t:'num', label:s=>s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
+    {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
+    {id:'bleedHint', t:'hint', text:'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
     {id:'cutMarks', t:'check', label:'Cut marks in the margin', key:'cutMarks'},
     {id:'fill', t:'check', label:'Fill every sheet (add extra pages to complete the last sheet)', key:'fill'},
     {id:'printHint', t:'hint', text:'Print the PDF at 100% or Actual size. Fit to page rescales the pages and they will no longer match the size you chose.'}
@@ -783,7 +823,7 @@ function makeField(c){
       inp.addEventListener('input', () => apply(false));
       inp.addEventListener('change', () => apply(true));
       wrap.append(lab, inp);
-      F.sync = () => { if(document.activeElement !== inp) inp.value = read(c); };
+      F.sync = () => { if(document.activeElement !== inp) inp.value = read(c); if(lab) lab.textContent = labText(); };
       break;
     }
     case 'range': {
@@ -819,7 +859,13 @@ function makeField(c){
       F.sync = () => { const v = read(c).toLowerCase(); sws.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === v))); pick.value = v; };
       break;
     }
-    case 'hint': wrap.append(el('p', {class:'hint'}, c.text)); break;
+    case 'hint': {
+      const txt = () => typeof c.text === 'function' ? c.text(S) : c.text;
+      const p = el('p', {class:'hint'}, txt());
+      wrap.append(p);
+      F.sync = () => { p.textContent = txt(); };
+      break;
+    }
   }
   return F;
 }
@@ -926,22 +972,25 @@ function render(){
   const pl = plan(S);
   V.page = clamp(V.page, 1, pl.total); V.sheet = clamp(V.sheet, 1, pl.sheets);
   let svg, w, h;
-  if(V.mode === 'page'){ w = S.w; h = S.h; svg = toSVG(buildPage(S, V.page, {guides:V.guides}), w, h); }
+  if(V.mode === 'page'){ w = pieceW(S); h = S.h; svg = toSVG(buildPiece(S, V.page, {guides:V.guides}), w, h); }
   else { w = pl.sw; h = pl.sh; svg = toSVG(buildSheet(S, pl, V.sheet, true, V.guides), w, h); }
   $('#stage').innerHTML = svg; cur = {w,h}; fitStage();
 
   const n = V.mode === 'page' ? pl.total : pl.sheets, i = V.mode === 'page' ? V.page : V.sheet;
-  $('#pagerLbl').textContent = (V.mode === 'page' ? 'Page ' : 'Sheet ')+i+' / '+n;
+  $('#pagerLbl').textContent = (V.mode === 'page' ? (S.spread ? 'Spread ' : 'Page ') : 'Sheet ')+i+' / '+n;
   $('#prev').disabled = i <= 1; $('#next').disabled = i >= n;
   $('#mPage').setAttribute('aria-pressed', String(V.mode === 'page'));
   $('#mSheet').setAttribute('aria-pressed', String(V.mode === 'sheet'));
 
   const pn = presetLabel(S.preset);
   const size = (S.preset !== 'custom' && pn ? pn.split(' · ')[0]+' · ' : '')+fmtLen(S.w)+' × '+fmtLen(S.h)+' '+S.unit;
-  const lay = pl.paper+' '+(pl.landscape ? 'landscape' : 'portrait')+' · '+pl.per+' per sheet'+(pl.per > 1 ? ' ('+pl.cols+'×'+pl.rows+')' : '');
-  $('#info').textContent = size+'  |  '+lay+'  |  '+pl.total+' page'+(pl.total === 1 ? '' : 's')+' on '+pl.sheets+' sheet'+(pl.sheets === 1 ? '' : 's');
+  const unitName = S.spread ? 'spread' : 'page';
+  const lay = pl.paper+' '+(pl.landscape ? 'landscape' : 'portrait')+' · '+pl.per+' '+unitName+(pl.per === 1 ? '' : 's')+' per sheet'+(pl.per > 1 ? ' ('+pl.cols+'×'+pl.rows+')' : '')
+    +(pl.bleed ? ' · '+fmtLen(pl.bleed)+' '+S.unit+' bleed, '+fmtLen(pl.gap)+' '+S.unit+' gap' : '');
+  const count = pl.total+' '+unitName+(pl.total === 1 ? '' : 's')+(S.spread ? ' ('+pl.total*2+' pages)' : '');
+  $('#info').textContent = size+(S.spread ? ' · spreads '+fmtLen(2*S.w)+' × '+fmtLen(S.h) : '')+'  |  '+lay+'  |  '+count+' on '+pl.sheets+' sheet'+(pl.sheets === 1 ? '' : 's');
   const note = $('#note');
-  if(pl.scaled){ note.hidden = false; note.textContent = 'This page is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
+  if(pl.scaled){ note.hidden = false; note.textContent = 'This '+(S.spread ? 'spread' : 'page')+' is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
   else note.hidden = true;
   $('#subline').textContent = pl.paper+' · '+S.unit+' · '+(TEMPLATES.find(t => t.v === S.tpl) || {}).l.toLowerCase();
 }
@@ -1006,7 +1055,7 @@ async function shareFile(file){
 }
 function pdfName(){
   const base = S.preset !== 'custom' ? S.preset : Math.round(S.w)+'x'+Math.round(S.h)+'mm';
-  return 'journal-'+base+'-'+S.tpl+'-'+S.paper+'.pdf';
+  return 'journal-'+base+'-'+S.tpl+(S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
 }
 async function exportPDF(){
   if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }

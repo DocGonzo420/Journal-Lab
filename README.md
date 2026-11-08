@@ -5,7 +5,7 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 - **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, blank
 - **Sizes:** A4, A5 (Hobonichi Cousin), A6, B5, B6, US Letter, Half Letter, Junior Legal, Quarter Letter, Field Notes, Passport Travelers Notebook (89 × 124 mm), pocket and large notebooks, or any custom size
 - **Printing:** as many pages as fit on each sheet, with cut marks, mirrored margins for double-sided books, titles, date lines and page numbers
-- **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine
+- **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine, or butt pages together so neighbours share cut lines (fewer cuts)
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection
 
 Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages so they no longer match the size you picked.

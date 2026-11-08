@@ -234,9 +234,9 @@ const DEFAULTS = {
   mt:12, mb:12, mi:14, mo:10, mirror:false,
   title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
-  spread:false, bleedOn:false, bleed:2
+  spread:false, bleedOn:false, bleed:2, shareCuts:false
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','bleedOn'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','bleedOn','shareCuts'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -315,6 +315,15 @@ function contentRect(s,p,inner){
   return {x:l, y:s.mt, w:Math.max(1, s.w-l-r), h:Math.max(1, s.h-s.mt-s.mb), innerLeft};
 }
 
+/* Where a page shares a cut line with its neighbour, the pattern is anchored to
+   that line so the dots or lines sit half a step from it on both pages and the
+   pattern reads as one across the cut. Otherwise it is centred. */
+function fit(a0, len, sp, anchor){
+  if(anchor == null){ const n = Math.floor(len/sp + 1e-9) + 1; return [a0 + (len - (n-1)*sp)/2, n]; }
+  const st = anchor + sp/2 + Math.ceil((a0 - anchor - sp/2)/sp - 1e-9)*sp;
+  return [st, Math.max(0, Math.floor((a0 + len - st)/sp + 1e-9) + 1)];
+}
+
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 const TPL = {
@@ -322,25 +331,25 @@ const TPL = {
 
   dots(s,B,C){
     const sp = spacing(s);
-    const cols = Math.floor(B.w/sp + 1e-9) + 1, rows = Math.floor(B.h/sp + 1e-9) + 1;
-    const ox = B.x + (B.w - (cols-1)*sp)/2, oy = B.y + (B.h - (rows-1)*sp)/2;
+    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
     const r = dotRadius(s.weight);
     for(let j=0;j<rows;j++) for(let i=0;i<cols;i++) C.ops.push(D(ox+i*sp, oy+j*sp, r, C.line));
   },
 
   grid(s,B,C){
     const sp = spacing(s);
-    const cols = Math.floor(B.w/sp + 1e-9) + 1, rows = Math.floor(B.h/sp + 1e-9) + 1;
-    const ox = B.x + (B.w - (cols-1)*sp)/2, oy = B.y + (B.h - (rows-1)*sp)/2;
+    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
     const x2 = ox + (cols-1)*sp, y2 = oy + (rows-1)*sp;
     for(let i=0;i<cols;i++) C.ops.push(L(ox+i*sp, oy, ox+i*sp, y2, C.lw, C.line));
     for(let j=0;j<rows;j++) C.ops.push(L(ox, oy+j*sp, x2, oy+j*sp, C.lw, C.line));
   },
 
   lined(s,B,C){
-    const sp = spacing(s), n = Math.floor(B.h/sp + 1e-9);
-    for(let i=1;i<=n;i++) C.ops.push(L(B.x, B.y+i*sp, B.x+B.w, B.y+i*sp, C.lw, C.line));
-    if(s.marginLine){ const mx = C.marginX != null ? C.marginX : B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, B.y+n*sp, C.lw, C.line)); }
+    const sp = spacing(s);
+    let y0 = B.y + sp, n = Math.floor(B.h/sp + 1e-9);
+    if(C.ay != null) [y0, n] = fit(B.y, B.h, sp, C.ay);
+    for(let i=0;i<n;i++) C.ops.push(L(B.x, y0+i*sp, B.x+B.w, y0+i*sp, C.lw, C.line));
+    if(s.marginLine){ const mx = C.marginX != null ? C.marginX : B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, y0+(n-1)*sp, C.lw, C.line)); }
   },
 
   cornell(s,B,C){
@@ -448,10 +457,14 @@ function buildPage(s,p,opt){
   const bl = bleedOf(s);
   if(bl){
     // Fill the page and run past its edges. In a spread the spine side keeps its margin.
+    // Edges shared with a neighbouring page (fewer-cuts layout) stop exactly at the page edge.
+    const sd = opt.sides || {}, out = k => sd[k] === false ? 0 : bl;
     const spineLeft = !!opt.spread && R.innerLeft, spineRight = !!opt.spread && !R.innerLeft;
-    const x1 = spineLeft ? B.x : -bl, x2 = spineRight ? B.x + B.w : s.w + bl;
-    const y1 = (title || s.dateField) ? B.y : -bl;
-    B = {x:x1, y:y1, w:x2-x1, h:s.h + bl - y1};
+    const x1 = spineLeft ? B.x : -out('l'), x2 = spineRight ? B.x + B.w : s.w + out('r');
+    const y1 = (title || s.dateField) ? B.y : -out('t');
+    B = {x:x1, y:y1, w:x2-x1, h:s.h + out('b') - y1};
+    if(sd.l === false) C.ax = 0; else if(sd.r === false) C.ax = s.w;
+    if(sd.t === false) C.ay = 0; else if(sd.b === false) C.ay = s.h;
     C.marginX = R.x + Math.min(20, R.w*0.15);
   }
   TPL[s.tpl](s,B,C,p);
@@ -473,12 +486,13 @@ function buildPage(s,p,opt){
 function buildPiece(s,k,opt){
   opt = opt || {};
   if(!s.spread) return buildPage(s,k,opt);
-  const ops = [], bl = bleedOf(s);
-  place(buildPage(s, 2*k-1, Object.assign({}, opt, {inner:'right', spread:true})), 0, 0, 1, ops);
-  place(buildPage(s, 2*k, Object.assign({}, opt, {inner:'left', spread:true})), s.w, 0, 1, ops);
+  const ops = [], bl = bleedOf(s), sd = opt.sides || {};
+  const half = side => Object.assign({}, opt, {inner:side, spread:true, sides:Object.assign({}, sd, side === 'right' ? {r:true} : {l:true})});
+  place(buildPage(s, 2*k-1, half('right')), 0, 0, 1, ops);
+  place(buildPage(s, 2*k, half('left')), s.w, 0, 1, ops);
   const tt = clamp(s.mt*0.4, 2, 4), tb = clamp(s.mb*0.4, 2, 4);
-  ops.push(L(s.w, -bl, s.w, tt, 0.25, '#555555'));
-  ops.push(L(s.w, s.h - tb, s.w, s.h + bl, 0.25, '#555555'));
+  ops.push(L(s.w, sd.t === false ? 0 : -bl, s.w, tt, 0.25, '#555555'));
+  ops.push(L(s.w, s.h - tb, s.w, s.h + (sd.b === false ? 0 : bl), 0.25, '#555555'));
   if(opt.guides) ops.push(L(s.w, 0, s.w, s.h, 0.18, '#3b82f6', [1.2,1.2]));
   return ops;
 }
@@ -488,7 +502,7 @@ function buildPiece(s,k,opt){
    ===================================================================== */
 function plan(s){
   const bl = bleedOf(s);
-  const P = PAPERS[s.paper], sm = s.sheetMargin, g = Math.max(s.gap, 2*bl), pw = pieceW(s), ph = s.h, eps = 1e-6;
+  const P = PAPERS[s.paper], sm = s.sheetMargin, g = s.shareCuts ? 0 : Math.max(s.gap, 2*bl), pw = pieceW(s), ph = s.h, eps = 1e-6;
   const mk = (sw,sh) => {
     const cols = Math.max(0, Math.floor((sw-2*sm+g+eps)/(pw+g)));
     const rows = Math.max(0, Math.floor((sh-2*sm+g+eps)/(ph+g)));
@@ -510,8 +524,10 @@ function plan(s){
   const sheets = Math.ceil(total/per);
   const pageW = pw*sc, pageH = ph*sc;
   const tw = cols*pageW + (cols-1)*g, th = rows*pageH + (rows-1)*g;
+  // Straight cuts to free every page: shared lines count once, gaps need two cuts each.
+  const cuts = g > 0 ? 2*cols + 2*rows : cols + rows + 2;
   return {sw:pick.sw, sh:pick.sh, cols, rows, per, sc, scaled, total, sheets, pageW, pageH, tw, th,
-          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl};
+          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl, cuts};
 }
 
 function place(ops,tx,ty,sc,out){
@@ -532,7 +548,9 @@ function buildSheet(s,pl,idx,preview,guides){
     if(p > pl.total) break;
     const c = i % pl.cols, r = Math.floor(i/pl.cols);
     const tx = pl.ox + c*(pl.pageW + pl.gap), ty = pl.oy + r*(pl.pageH + pl.gap);
-    place(buildPiece(s,p,{guides}), tx, ty, pl.sc, ops);
+    const share = pl.gap === 0;
+    const sides = {l:!share || c === 0, r:!share || c === pl.cols-1, t:!share || r === 0, b:!share || r === pl.rows-1};
+    place(buildPiece(s,p,{guides, sides}), tx, ty, pl.sc, ops);
     if(preview) ops.push(RC(tx, ty, pl.pageW, pl.pageH, 0.2, '#9aa4b5', [1.5,1.5]));
   }
   if(s.cutMarks && !preview){
@@ -741,11 +759,12 @@ const SECTIONS = [
     {id:'paper', t:'seg', label:'Paper', opts:[['letter','US Letter'],['a4','A4']], key:'paper'},
     {id:'sheetOrient', t:'select', label:'Sheet orientation', opts:[['auto','Automatic (fits most pages)'],['portrait','Portrait'],['landscape','Landscape']], key:'sheetOrient'},
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
-    {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30},
+    {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},
+    {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30, show:s=>!s.shareCuts},
     {id:'pages', t:'num', label:s=>s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
     {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
     {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
-    {id:'bleedHint', t:'hint', text:'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
+    {id:'bleedHint', t:'hint', text:s=>s.shareCuts ? 'The pattern fills each page and runs past the outside of the block, so a cut that is slightly off still looks clean. Inside the block, neighbouring pages meet at a shared cut line. The cut marks show the true page edges.' : 'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
     {id:'cutMarks', t:'check', label:'Cut marks in the margin', key:'cutMarks'},
     {id:'fill', t:'check', label:'Fill every sheet (add extra pages to complete the last sheet)', key:'fill'},
     {id:'printHint', t:'hint', text:'Print the PDF at 100% or Actual size. Fit to page rescales the pages and they will no longer match the size you chose.'}
@@ -986,7 +1005,7 @@ function render(){
   const size = (S.preset !== 'custom' && pn ? pn.split(' · ')[0]+' · ' : '')+fmtLen(S.w)+' × '+fmtLen(S.h)+' '+S.unit;
   const unitName = S.spread ? 'spread' : 'page';
   const lay = pl.paper+' '+(pl.landscape ? 'landscape' : 'portrait')+' · '+pl.per+' '+unitName+(pl.per === 1 ? '' : 's')+' per sheet'+(pl.per > 1 ? ' ('+pl.cols+'×'+pl.rows+')' : '')
-    +(pl.bleed ? ' · '+fmtLen(pl.bleed)+' '+S.unit+' bleed, '+fmtLen(pl.gap)+' '+S.unit+' gap' : '');
+    +(pl.bleed ? ' · '+fmtLen(pl.bleed)+' '+S.unit+' bleed'+(pl.gap ? ', '+fmtLen(pl.gap)+' '+S.unit+' gap' : '') : '')+' · '+pl.cuts+' cuts';
   const count = pl.total+' '+unitName+(pl.total === 1 ? '' : 's')+(S.spread ? ' ('+pl.total*2+' pages)' : '');
   $('#info').textContent = size+(S.spread ? ' · spreads '+fmtLen(2*S.w)+' × '+fmtLen(S.h) : '')+'  |  '+lay+'  |  '+count+' on '+pl.sheets+' sheet'+(pl.sheets === 1 ? '' : 's');
   const note = $('#note');

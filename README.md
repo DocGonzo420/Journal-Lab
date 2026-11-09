@@ -2,6 +2,8 @@
 
 Make printable journal and planner pages at any size, lay them out on US Letter or A4 with cut marks, and download a PDF ready to print.
 
+**Open the app:** https://docgonzo420.github.io/Journal-Lab/
+
 - **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, blank
 - **Sizes:** A4, A5 (Hobonichi Cousin), A6, B5, B6, US Letter, Half Letter, Junior Legal, Quarter Letter, Field Notes, Passport Travelers Notebook (89 × 124 mm), pocket and large notebooks, or any custom size
 - **Printing:** as many pages as fit on each sheet, with cut marks, mirrored margins for double-sided books, titles, date lines and page numbers

@@ -12,6 +12,7 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 - **Dated pages:** fill a month of daily or weekly pages with real dates, with a month calendar page first, or print monthly calendars
 - **Ring holes:** punch marks for A5, Personal and Pocket six-ring planners, or a clear punch zone for disc-bound planners, with the page content kept away from the holes
 - **Printer calibration:** a two-sided test sheet shows how much your printer cuts off at each edge and how far it shifts the front and back; enter the measurements and every PDF corrects for them
+- **Share links:** send a link that opens Journal Lab with your exact page setup; your printer margin and calibration stay on your device
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection
 
 Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages so they no longer match the size you picked.

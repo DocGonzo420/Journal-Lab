@@ -24,13 +24,6 @@ Once GitHub Pages is on, open the app's address (`https://<your-user>.github.io/
 
 Saved presets live on each device. To move a setup between devices, open **Save and share** and copy the settings text, or save a settings file.
 
-## Turn on GitHub Pages
-
-1. In the repository, open **Settings**, then **Pages**.
-2. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
-3. Pick the **main** branch and the **/ (root)** folder, then **Save**.
-4. After a minute or two, the address shows at the top of the Pages screen.
-
 ## How it's built
 
 Everything runs in the browser; there's no server and no build step.

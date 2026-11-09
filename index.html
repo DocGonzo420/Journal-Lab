@@ -863,9 +863,33 @@ function makeTestPDF(s){
   return doc;
 }
 
+/* Share links: the setup rides in the link after #s= as base64url JSON. Printer
+   settings (margin, double-sided, calibration) belong to one printer, so they stay out. */
+const SITE = 'https://docgonzo420.github.io/Journal-Lab/';
+const PRINTER_KEYS = ['sheetMargin','duplex'].concat(CAL_KEYS);
+function shareData(s){ const d = diff(s); for(const k of PRINTER_KEYS) delete d[k]; return d; }
+function encodeShare(o){
+  const b = new TextEncoder().encode(JSON.stringify(o));
+  let bin = ''; for(const x of b) bin += String.fromCharCode(x);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function decodeShare(t){
+  const m = /#s=([A-Za-z0-9_-]+)/.exec(t || ''); if(!m) return null;
+  const bin = atob(m[1].replace(/-/g,'+').replace(/_/g,'/'));
+  const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+  if(!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  for(const k of PRINTER_KEYS) delete o[k];
+  return o;
+}
+function shareBase(){
+  const l = typeof location !== 'undefined' ? location : null;
+  return l && l.protocol === 'https:' && /\.github\.io$/.test(l.hostname) ? l.origin + l.pathname : SITE;
+}
+const shareLink = s => shareBase() + '#s=' + encodeShare(shareData(s));
+
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift, shareData, encodeShare, decodeShare, shareLink};
 }
 if(typeof document === 'undefined') return;
 
@@ -1212,6 +1236,8 @@ const STARTERS = [
   {n:'Half-letter weekly', p:{w:139.7,h:215.9,preset:'half',tpl:'weekly',title:'Week of',pages:1}},
   {n:'Pocket grid', p:{w:88.9,h:139.7,preset:'fn',tpl:'grid',mt:8,mb:8,mi:8,mo:8,pages:1}}
 ];
+function printerOf(s){ const o = {}; for(const k of PRINTER_KEYS) o[k] = s[k]; return o; }
+function loadShared(o){ loadSettings(Object.assign({}, o, printerOf(S))); }
 function loadSettings(o,keepSheet){
   const keep = keepSheet ? {unit:S.unit, paper:S.paper, sheetMargin:S.sheetMargin, duplex:S.duplex} : {};
   if(keepSheet) for(const k of CAL_KEYS) keep[k] = S[k];
@@ -1224,8 +1250,11 @@ function buildStarters(){
   for(const st of STARTERS) host.append(el('button', {type:'button', class:'chip', onclick:() => { loadSettings(st.p, true); toast(st.n+' loaded'); }}, st.n));
 }
 
-let jsonBox = null, presetList = null;
-function refreshJson(){ if(jsonBox && document.activeElement !== jsonBox) jsonBox.value = JSON.stringify(diff(S), null, 1); }
+let jsonBox = null, presetList = null, linkBox = null;
+function refreshJson(){
+  if(jsonBox && document.activeElement !== jsonBox) jsonBox.value = JSON.stringify(diff(S), null, 1);
+  if(linkBox) linkBox.value = shareLink(S);
+}
 function renderPresetList(){
   if(!presetList) return;
   presetList.textContent = '';
@@ -1244,7 +1273,13 @@ function buildSaveSection(){
   const name = el('input', {id:'presetName', type:'text', maxlength:40, placeholder:'Preset name', autocomplete:'off'});
   presetList = el('div', {class:'list'});
   jsonBox = el('textarea', {id:'jsonBox', spellcheck:'false', 'aria-label':'Settings as text'});
+  linkBox = el('input', {id:'shareLink', type:'text', readonly:true, 'aria-label':'Share link'});
   body.append(
+    el('div', {class:'field wide'}, el('label', {class:'lab', for:'shareLink'}, 'Share link: opens Journal Lab with this exact setup'), linkBox),
+    el('div', {class:'field wide btns'},
+      el('button', {type:'button', id:'btnShare', class:'btn small', onclick:shareSetup}, 'Share link'),
+      el('button', {type:'button', id:'btnCopyLink', class:'btn small', onclick:copyLink}, 'Copy link')),
+    el('div', {class:'field wide'}, el('p', {class:'hint'}, 'The link carries the page setup, not your printer margin or calibration, so it prints right on anyone\u2019s printer once they set their own.')),
     el('div', {class:'field wide'}, el('label', {class:'lab', for:'presetName'}, 'Save this setup on this device'),
       el('div', {class:'inline'}, name, el('button', {type:'button', class:'btn', onclick:() => {
         const n = name.value.trim(); if(!n){ toast('Give the preset a name first'); return; }
@@ -1252,7 +1287,7 @@ function buildSaveSection(){
         if(savePresets(ps)){ name.value = ''; renderPresetList(); toast('Saved '+n); } else toast('This browser blocked saving. Use the settings text below instead.');
       }}, 'Save'))),
     el('div', {class:'field wide'}, presetList),
-    el('div', {class:'field wide'}, el('label', {class:'lab', for:'jsonBox'}, 'Settings as text. Copy to share, or paste someone else’s and apply.'), jsonBox),
+    el('div', {class:'field wide'}, el('label', {class:'lab', for:'jsonBox'}, 'Settings as text. Copy to share, or paste someone else’s settings or share link and apply.'), jsonBox),
     el('div', {class:'field wide btns'},
       el('button', {type:'button', class:'btn small', onclick:copyJson}, 'Copy'),
       el('button', {type:'button', class:'btn small', onclick:applyJson}, 'Apply pasted settings'),
@@ -1262,6 +1297,19 @@ function buildSaveSection(){
   renderPresetList();
   return det;
 }
+async function copyLink(){
+  const url = shareLink(S);
+  try{ await navigator.clipboard.writeText(url); toast('Link copied'); }
+  catch(e){ linkBox.value = url; linkBox.focus(); linkBox.select(); toast('Press and hold to copy the selected link'); }
+}
+async function shareSetup(){
+  const url = shareLink(S);
+  if(navigator.share){
+    try{ await navigator.share({title:'Journal Lab setup', url}); return; }
+    catch(e){ if(e && e.name === 'AbortError') return; }
+  }
+  copyLink();
+}
 async function copyJson(){
   const text = JSON.stringify(diff(S), null, 1);
   try{ await navigator.clipboard.writeText(text); toast('Settings copied'); }
@@ -1269,7 +1317,9 @@ async function copyJson(){
 }
 function applyJson(){
   try{
-    const o = JSON.parse(jsonBox.value);
+    const t = jsonBox.value.trim();
+    if(t.includes('#s=')){ const o = decodeShare(t); if(!o) throw new Error('not a link'); loadShared(o); toast('Shared setup applied'); return; }
+    const o = JSON.parse(t);
     if(!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('not settings');
     loadSettings(o); toast('Settings applied');
   }catch(e){ toast('That text is not valid settings JSON'); }
@@ -1398,9 +1448,16 @@ async function exportPDF(){
 
 /* ---------- start ---------- */
 S = loadSaved();
+let opened = false;
+try{
+  const o = decodeShare(location.hash);
+  if(o){ S = merge(Object.assign({}, o, printerOf(S))); opened = true; }
+}catch(e){ console.warn('Could not read the shared setup:', e); }
+if(location.hash.startsWith('#s=')) try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 buildControls(); buildStarters(); bindPreview();
 $('#btnPdf').onclick = exportPDF;
-syncAll(); vis(); render();
+syncAll(); vis(); render(); persist();
+if(opened) toast('Opened a shared setup');
 })();
 </script>
 

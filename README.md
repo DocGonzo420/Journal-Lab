@@ -4,11 +4,12 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 
 **Open the app:** https://docgonzo420.github.io/Journal-Lab/
 
-- **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, blank
+- **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, monthly calendar, blank
 - **Sizes:** A4, A5 (Hobonichi Cousin), A6, B5, B6, US Letter, Half Letter, Junior Legal, Quarter Letter, Field Notes, Passport Travelers Notebook (89 × 124 mm), pocket and large notebooks, or any custom size
 - **Printing:** as many pages as fit on each sheet, with cut marks, mirrored margins for double-sided books, titles, date lines and page numbers
 - **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine, or butt pages together so neighbours share cut lines (fewer cuts)
 - **Booklets:** print spreads double-sided in saddle-stitch order, so the stack folds and staples into one booklet with the pages in reading order
+- **Dated pages:** fill a month of daily or weekly pages with real dates, with a month calendar page first, or print monthly calendars
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection
 
 Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages so they no longer match the size you picked.

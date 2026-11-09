@@ -1,0 +1,19 @@
+{
+  "name": "Printable Journal Generator",
+  "short_name": "Journal Pages",
+  "description": "Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eceff3",
+  "theme_color": "#2446c8",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

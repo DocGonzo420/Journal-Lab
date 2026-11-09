@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Printable Journal Generator</title>
+<meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1319" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Journal Pages">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a drafting-table tool. Live paper preview pinned on top (phone) or at right (desktop),
+   controls in collapsible sections beneath, one sticky action bar for the PDF. */
+:root{
+  --bg:#eceff3; --panel:#ffffff; --field:#f3f5f9; --sunken:#d8dee7; --ink:#141922; --muted:#566074; --rule:#cbd3de;
+  --accent:#2446c8; --accent-ink:#ffffff; --accent-soft:#e0e7fc; --warn:#7a4e00; --warn-soft:#fbeed0;
+  --font:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(20,25,34,.14),0 10px 28px rgba(20,25,34,.16);
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1319; --panel:#171c24; --field:#0f1319; --sunken:#0a0d11; --ink:#e8ecf2; --muted:#9aa4b5; --rule:#2a3240;
+    --accent:#86a0ff; --accent-ink:#0b1022; --accent-soft:#1f2a4d; --warn:#f0c36a; --warn-soft:#3a2f12;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1319; --panel:#171c24; --field:#0f1319; --sunken:#0a0d11; --ink:#e8ecf2; --muted:#9aa4b5; --rule:#2a3240;
+  --accent:#86a0ff; --accent-ink:#0b1022; --accent-soft:#1f2a4d; --warn:#f0c36a; --warn-soft:#3a2f12;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.4;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:flex;flex-direction:column;min-height:100%;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{padding-block:14px 6px;min-width:0}
+.top h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.sub{margin:2px 0 0;font:400 12px var(--mono);color:var(--muted)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-block:10px 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-height:36px;padding:0 14px;border:1px solid var(--rule);border-radius:999px;background:var(--panel);cursor:pointer;font-size:13px;white-space:nowrap}
+.chip:hover{border-color:var(--accent)}
+
+.preview{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;min-width:0}
+.bar{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;margin-bottom:8px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--panel)}
+.seg button{min-height:38px;padding:0 14px;border:0;background:transparent;cursor:pointer;font-size:14px}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:500}
+.pager{display:inline-flex;align-items:center;gap:2px}
+.pager button{width:38px;height:38px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);cursor:pointer;font-size:20px;line-height:1}
+.pager button:disabled{opacity:.35;cursor:default}
+.pager span{min-width:92px;text-align:center;font:400 12px var(--mono);color:var(--muted)}
+.chk{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;min-height:38px}
+.chk input{width:20px;height:20px;accent-color:var(--accent);margin:0}
+.spacer{flex:1}
+.btn{min-height:42px;padding:0 16px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);cursor:pointer;font-weight:500}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{min-height:36px;padding:0 12px;font-size:13px}
+.btn:disabled{opacity:.6;cursor:default}
+.stage{display:grid;place-items:center;background:var(--sunken);border-radius:var(--r);height:clamp(210px,38vh,380px);overflow:hidden}
+.stage svg{display:block;background:#fff;box-shadow:var(--shadow);max-width:none}
+.preview.collapsed .stage{display:none}
+.info{margin:8px 0 0;font:400 12px/1.5 var(--mono);color:var(--muted)}
+.note{margin:6px 0 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:13px}
+
+.controls{min-width:0;padding-bottom:12px}
+details.sec{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);margin-top:10px}
+details.sec>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:50px;padding:0 14px;cursor:pointer;font-weight:600}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
+details.sec[open]>summary::after{transform:rotate(-135deg)}
+.sec-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px;padding:2px 14px 16px}
+.field{min-width:0}
+.field.wide{grid-column:1/-1}
+.lab{display:block;margin:0 0 5px;font-size:12px;color:var(--muted);letter-spacing:.02em}
+input[type=text],input[type=number],select,textarea{width:100%;min-height:42px;padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--field)}
+textarea{font:400 12px/1.4 var(--mono);min-height:120px;resize:vertical}
+select{appearance:auto}
+.inwrap{position:relative}
+.inwrap input{padding-right:38px;font-family:var(--mono);font-size:14px}
+.unit{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:400 12px var(--mono);color:var(--muted);pointer-events:none}
+.rangerow{display:flex;align-items:center;gap:12px}
+.rangerow input{flex:1;min-width:0;accent-color:var(--accent);height:34px}
+.rangerow output{min-width:64px;text-align:right;font:400 13px var(--mono)}
+.sw-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--rule);cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent)}
+input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule);border-radius:8px;background:var(--field)}
+.hint{margin:0;font-size:13px;color:var(--muted)}
+.list{display:grid;gap:8px}
+.row{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--field)}
+.row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row div{display:flex;gap:6px;flex:none}
+.inline{display:flex;gap:8px}
+.inline input{flex:1;min-width:0}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+
+.actions{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+.actions .btn{flex:1}
+.toast{position:fixed;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(78px + env(safe-area-inset-bottom,0px));margin-inline:auto;width:fit-content;max-width:min(440px,100%);background:var(--ink);color:var(--bg);padding:11px 14px;border-radius:10px;font-size:14px;z-index:20;box-shadow:var(--shadow)}
+
+@media (min-width:900px){
+  html,body{height:100%}
+  .app{display:grid;height:100%;max-width:1480px;margin:0 auto;column-gap:22px;
+    grid-template-columns:minmax(340px,410px) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;
+    grid-template-areas:"top preview" "controls preview" "actions preview"}
+  .top{grid-area:top}
+  .controls{grid-area:controls;overflow-y:auto;padding-right:2px}
+  .actions{grid-area:actions;position:static}
+  .preview{grid-area:preview;position:static;display:flex;flex-direction:column;height:100%;min-height:0;padding-block:14px}
+  .stage{flex:1;height:auto;min-height:0}
+  #collapse{display:none}
+}
+@media (prefers-reduced-motion:reduce){details.sec>summary::after{transition:none}}
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.titlerow h1{min-width:0}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="titlerow">
+      <h1>Printable Journal Generator</h1>
+      <button type="button" class="btn small" id="btnInstall" hidden>Install app</button>
+    </div>
+    <p class="sub" id="subline">any page size · print on Letter or A4</p>
+    <div class="chips" id="starters" role="group" aria-label="Starting points"></div>
+  </header>
+
+  <section class="preview" id="preview" aria-label="Preview">
+    <div class="bar">
+      <div class="seg" role="group" aria-label="Preview mode">
+        <button type="button" id="mPage" aria-pressed="true">Page</button>
+        <button type="button" id="mSheet" aria-pressed="false">Sheet</button>
+      </div>
+      <div class="pager">
+        <button type="button" id="prev" aria-label="Previous">&#8249;</button>
+        <span id="pagerLbl"></span>
+        <button type="button" id="next" aria-label="Next">&#8250;</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="guides" checked> Margins</label>
+      <span class="spacer"></span>
+      <button type="button" class="btn small" id="collapse">Hide preview</button>
+    </div>
+    <div class="stage" id="stage" aria-live="polite"></div>
+    <p class="info" id="info"></p>
+    <p class="note" id="note" hidden></p>
+  </section>
+
+  <main class="controls" id="controls"></main>
+
+  <footer class="actions">
+    <button type="button" class="btn primary" id="btnPdf">Download PDF</button>
+    <button type="button" class="btn" id="btnShare" hidden>Save or print PDF</button>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="vendor/jspdf.umd.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   1. Constants and settings model
+   All geometry is in millimetres. Line weights are stored in points.
+   ===================================================================== */
+const PT = 25.4/72, IN = 25.4;
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const clone = o => JSON.parse(JSON.stringify(o));
+
+const PAPERS = {
+  letter:{l:'US Letter', w:215.9, h:279.4},
+  a4:{l:'A4', w:210, h:297}
+};
+
+const PRESETS = [
+  {g:'ISO', items:[
+    {k:'a4', l:'A4', w:210, h:297},
+    {k:'a5', l:'A5 · Hobonichi Cousin', w:148, h:210},
+    {k:'a6', l:'A6 · Hobonichi Original', w:105, h:148},
+    {k:'b5', l:'B5', w:176, h:250},
+    {k:'b6', l:'B6', w:125, h:176}]},
+  {g:'US', items:[
+    {k:'letter', l:'US Letter', w:215.9, h:279.4},
+    {k:'half', l:'Half Letter · 5.5 × 8.5 in', w:139.7, h:215.9},
+    {k:'jr', l:'Junior Legal · 5 × 8 in', w:127, h:203.2},
+    {k:'quarter', l:'Quarter Letter · 4.25 × 5.5 in', w:107.95, h:139.7}]},
+  {g:'Notebook', items:[
+    {k:'fn', l:'Field Notes · 3.5 × 5.5 in', w:88.9, h:139.7},
+    {k:'pocket', l:'Pocket notebook · 90 × 140 mm', w:90, h:140},
+    {k:'tn', l:'Passport Travelers Notebook · 89 × 124 mm', w:89, h:124},
+    {k:'large', l:'Large notebook · 130 × 210 mm', w:130, h:210}]},
+  {g:'Custom', items:[{k:'custom', l:'Custom size'}]}
+];
+const ALL_PRESETS = PRESETS.flatMap(g => g.items);
+const presetLabel = k => (ALL_PRESETS.find(p => p.k === k) || {}).l || '';
+
+const TEMPLATES = [
+  {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lined', l:'Ruled lines'},
+  {v:'cornell', l:'Cornell notes'}, {v:'checklist', l:'Checklist'},
+  {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'blank', l:'Blank'}
+];
+const SP_KEYS = ['dots','grid','lined','cornell','checklist'];
+
+const DEFAULTS = {
+  w:148, h:210, preset:'a5', unit:'mm',
+  tpl:'dots',
+  spacings:{dots:5, grid:5, lined:7, cornell:7, checklist:9},
+  weight:0.4, intensity:70, color:'#6b7280',
+  marginLine:false,
+  cueW:45, summaryH:40, cornellLines:true, cornellLabels:true,
+  cbSize:4.5,
+  startHour:6, endHour:20, halfHours:true, hour24:false, priorities:true, dailyNotes:false,
+  weekStart:1, weekLayout:'grid',
+  mt:12, mb:12, mi:14, mo:10, mirror:false,
+  title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
+  paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
+  spread:false, bleedOn:false, bleed:2, shareCuts:false
+};
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','bleedOn','shareCuts'];
+
+function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
+
+function sanitize(s){
+  s.w = num(s.w,148,20,600); s.h = num(s.h,210,20,600);
+  s.unit = s.unit === 'in' ? 'in' : 'mm';
+  if(!ALL_PRESETS.some(p => p.k === s.preset)) s.preset = 'custom';
+  if(!TEMPLATES.some(t => t.v === s.tpl)) s.tpl = 'dots';
+  for(const k of SP_KEYS) s.spacings[k] = num(s.spacings[k], DEFAULTS.spacings[k], 1.5, 30);
+  s.weight = num(s.weight,.4,.1,2); s.intensity = num(s.intensity,70,10,100);
+  s.color = /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : DEFAULTS.color;
+  s.cueW = num(s.cueW,45,15,120); s.summaryH = num(s.summaryH,40,15,120); s.cbSize = num(s.cbSize,4.5,2,10);
+  s.startHour = Math.round(num(s.startHour,6,0,23)); s.endHour = Math.round(num(s.endHour,20,1,24));
+  if(s.endHour <= s.startHour) s.endHour = Math.min(24, s.startHour + 1);
+  s.weekStart = +s.weekStart === 0 ? 0 : 1; s.weekLayout = s.weekLayout === 'rows' ? 'rows' : 'grid';
+  for(const k of ['mt','mb','mi','mo']) s[k] = num(s[k],10,0,60);
+  s.title = String(s.title || '').slice(0,60); s.titleSize = num(s.titleSize,12,8,36);
+  if(!['none','outer','inner','center'].includes(s.pageNums)) s.pageNums = 'none';
+  s.startNum = Math.round(num(s.startNum,1,0,9999));
+  if(!PAPERS[s.paper]) s.paper = 'letter';
+  if(!['auto','portrait','landscape'].includes(s.sheetOrient)) s.sheetOrient = 'auto';
+  s.sheetMargin = num(s.sheetMargin,5,0,30); s.gap = num(s.gap,0,0,30);
+  s.pages = Math.round(num(s.pages,4,1,200));
+  s.bleed = num(s.bleed,2,0.5,6);
+  for(const k of BOOLS) s[k] = !!s[k];
+  return s;
+}
+function merge(o){
+  const s = clone(DEFAULTS);
+  if(o && typeof o === 'object'){
+    for(const k of Object.keys(o)){
+      if(k === 'spacings'){ if(o[k] && typeof o[k] === 'object') Object.assign(s.spacings, o[k]); }
+      else if(k in s) s[k] = o[k];
+    }
+  }
+  return sanitize(s);
+}
+function diff(s){
+  const d = {};
+  for(const k of Object.keys(DEFAULTS)){
+    if(k === 'spacings'){
+      const sp = {}; for(const t of SP_KEYS) if(s.spacings[t] !== DEFAULTS.spacings[t]) sp[t] = s.spacings[t];
+      if(Object.keys(sp).length) d.spacings = sp;
+    } else if(JSON.stringify(s[k]) !== JSON.stringify(DEFAULTS[k])) d[k] = s[k];
+  }
+  return d;
+}
+
+/* =====================================================================
+   2. Drawing primitives. Every template emits these; the SVG preview
+   and the jsPDF exporter both consume the same list.
+   ===================================================================== */
+const L  = (x1,y1,x2,y2,w,c,dash) => ({k:'l',x1,y1,x2,y2,w,c,dash});
+const D  = (x,y,r,c) => ({k:'d',x,y,r,c});
+const RC = (x,y,w,h,lw,c,dash) => ({k:'r',x,y,w,h,lw,c,dash});
+const T  = (x,y,s,size,c,a,b) => ({k:'t',x,y,s,size,c,a:a||'l',b:!!b});
+
+function hexToRgb(hx){ const n = parseInt(hx.replace('#',''),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+function rgbToHex(r,g,b){ return '#'+[r,g,b].map(v => Math.round(v).toString(16).padStart(2,'0')).join(''); }
+function tint(hx,a){ const [r,g,b] = hexToRgb(hx); return rgbToHex(255-(255-r)*a, 255-(255-g)*a, 255-(255-b)*a); }
+function darken(hx,f){ const [r,g,b] = hexToRgb(hx); return rgbToHex(r*f,g*f,b*f); }
+
+const spacing = s => s.spacings[s.tpl] || 5;
+const dotRadius = w => 0.1 + w*0.32;
+
+/* Bleed: dot grid, square grid and ruled patterns can fill the page and run
+   past its edges, so a slightly-off cut still looks clean. */
+const BLEED_TPLS = ['dots','grid','lined'];
+const bleedOf = s => s.bleedOn && BLEED_TPLS.includes(s.tpl) ? s.bleed : 0;
+/* Booklet spreads: two pages side by side, folded at the spine. */
+const pieceW = s => s.spread ? 2*s.w : s.w;
+
+function contentRect(s,p,inner){
+  const innerLeft = inner ? inner === 'left' : (!s.mirror || (p % 2 === 1));
+  const l = innerLeft ? s.mi : s.mo, r = innerLeft ? s.mo : s.mi;
+  return {x:l, y:s.mt, w:Math.max(1, s.w-l-r), h:Math.max(1, s.h-s.mt-s.mb), innerLeft};
+}
+
+/* Where a page shares a cut line with its neighbour, the pattern is anchored to
+   that line so the dots or lines sit half a step from it on both pages and the
+   pattern reads as one across the cut. Otherwise it is centred. */
+function fit(a0, len, sp, anchor){
+  if(anchor == null){ const n = Math.floor(len/sp + 1e-9) + 1; return [a0 + (len - (n-1)*sp)/2, n]; }
+  const st = anchor + sp/2 + Math.ceil((a0 - anchor - sp/2)/sp - 1e-9)*sp;
+  return [st, Math.max(0, Math.floor((a0 + len - st)/sp + 1e-9) + 1)];
+}
+
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+const TPL = {
+  blank(){},
+
+  dots(s,B,C){
+    const sp = spacing(s);
+    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const r = dotRadius(s.weight);
+    for(let j=0;j<rows;j++) for(let i=0;i<cols;i++) C.ops.push(D(ox+i*sp, oy+j*sp, r, C.line));
+  },
+
+  grid(s,B,C){
+    const sp = spacing(s);
+    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const x2 = ox + (cols-1)*sp, y2 = oy + (rows-1)*sp;
+    for(let i=0;i<cols;i++) C.ops.push(L(ox+i*sp, oy, ox+i*sp, y2, C.lw, C.line));
+    for(let j=0;j<rows;j++) C.ops.push(L(ox, oy+j*sp, x2, oy+j*sp, C.lw, C.line));
+  },
+
+  lined(s,B,C){
+    const sp = spacing(s);
+    let y0 = B.y + sp, n = Math.floor(B.h/sp + 1e-9);
+    if(C.ay != null) [y0, n] = fit(B.y, B.h, sp, C.ay);
+    for(let i=0;i<n;i++) C.ops.push(L(B.x, y0+i*sp, B.x+B.w, y0+i*sp, C.lw, C.line));
+    if(s.marginLine){ const mx = C.marginX != null ? C.marginX : B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, y0+(n-1)*sp, C.lw, C.line)); }
+  },
+
+  cornell(s,B,C){
+    const sp = spacing(s);
+    const cw = clamp(s.cueW, 10, B.w*0.7), sh = clamp(s.summaryH, 10, B.h*0.6);
+    const xd = B.x + cw, yd = B.y + B.h - sh;
+    C.ops.push(L(xd, B.y, xd, yd, C.lw, C.line));
+    C.ops.push(L(B.x, yd, B.x+B.w, yd, C.lw, C.line));
+    if(s.cornellLabels){
+      C.ops.push(T(B.x, B.y+3.4, 'CUES', 7, C.mute, 'l', true));
+      C.ops.push(T(xd+2, B.y+3.4, 'NOTES', 7, C.mute, 'l', true));
+      C.ops.push(T(B.x, yd+3.6, 'SUMMARY', 7, C.mute, 'l', true));
+    }
+    if(s.cornellLines){
+      for(let y=B.y+sp; y<yd-0.01; y+=sp) C.ops.push(L(xd, y, B.x+B.w, y, C.lw, C.faint));
+      for(let y=yd+sp; y<B.y+B.h+0.01; y+=sp) C.ops.push(L(B.x, y, B.x+B.w, y, C.lw, C.faint));
+    }
+  },
+
+  checklist(s,B,C){
+    const sp = spacing(s), n = Math.floor(B.h/sp + 1e-9);
+    const cb = Math.min(s.cbSize, sp*0.8);
+    for(let i=0;i<n;i++){
+      const y = B.y + (i+1)*sp;
+      C.ops.push(RC(B.x, y - sp/2 - cb/2, cb, cb, C.lw*1.3, C.line));
+      C.ops.push(L(B.x+cb+3, y, B.x+B.w, y, C.lw, C.line));
+    }
+  },
+
+  daily(s,B,C){
+    let y = B.y;
+    if(s.priorities){
+      C.ops.push(T(B.x, y+3.2, 'TOP PRIORITIES', 7, C.mute, 'l', true));
+      for(let i=0;i<3;i++){
+        const yy = y + 10 + i*7.5;
+        C.ops.push(T(B.x, yy-0.8, String(i+1), 8, C.mute));
+        C.ops.push(L(B.x+5, yy, B.x+B.w, yy, C.lw, C.line));
+      }
+      y += 10 + 2*7.5 + 6;
+    }
+    const notesW = s.dailyNotes ? B.w*0.36 : 0, gap = s.dailyNotes ? 4 : 0;
+    const sw = B.w - notesW - gap, tw = 11;
+    const hours = Math.max(1, s.endHour - s.startHour), per = s.halfHours ? 2 : 1, rows = hours*per;
+    const H = Math.max(10, B.y + B.h - y), rh = H/rows;
+    for(let r=0;r<=rows;r++){
+      const yy = y + r*rh, hourLine = r % per === 0;
+      C.ops.push(L(B.x+tw, yy, B.x+sw, yy, C.lw, hourLine ? C.line : C.faint, hourLine ? null : [0.6,0.9]));
+      if(hourLine && r < rows){
+        const hr = s.startHour + r/per;
+        const lab = s.hour24 ? String(hr).padStart(2,'0')+':00' : ((hr%12)||12)+' '+((hr%24)<12?'AM':'PM');
+        C.ops.push(T(B.x, yy+3.2, lab, 7, C.mute));
+      }
+    }
+    if(s.dailyNotes){
+      C.ops.push(RC(B.x+sw+gap, y, notesW, H, C.lw, C.line));
+      C.ops.push(T(B.x+sw+gap+2, y+3.6, 'NOTES', 7, C.mute, 'l', true));
+    }
+  },
+
+  weekly(s,B,C){
+    const order = [0,1,2,3,4,5,6].map(i => (s.weekStart + i) % 7);
+    if(s.weekLayout === 'rows'){
+      const rh = B.h/7;
+      C.ops.push(L(B.x, B.y, B.x+B.w, B.y, C.lw, C.line));
+      order.forEach((d,i) => {
+        const y = B.y + i*rh;
+        C.ops.push(T(B.x+1, y+3.8, DAYS[d].toUpperCase(), 7, C.mute, 'l', true));
+        C.ops.push(L(B.x, y+rh, B.x+B.w, y+rh, C.lw, C.line));
+      });
+    } else {
+      const cols = B.w > B.h ? 4 : 2, rows = 8/cols, g = 3;
+      const bw = (B.w - (cols-1)*g)/cols, bh = (B.h - (rows-1)*g)/rows;
+      for(let k=0;k<8;k++){
+        const c = k % cols, r = Math.floor(k/cols);
+        const x = B.x + c*(bw+g), y = B.y + r*(bh+g);
+        C.ops.push(RC(x, y, bw, bh, C.lw, C.line));
+        C.ops.push(T(x+2, y+4, k < 7 ? DAYS[order[k]].toUpperCase() : 'NOTES', 7, C.mute, 'l', true));
+      }
+    }
+  }
+};
+
+function buildPage(s,p,opt){
+  opt = opt || {};
+  const ops = [], R = contentRect(s,p,opt.inner);
+  const line = tint(s.color, s.intensity/100);
+  const C = {
+    ops, line, lw: s.weight*PT,
+    faint: tint(s.color, s.intensity/100*0.55),
+    mute: tint(darken(s.color,0.8), Math.min(1, s.intensity/100+0.2)),
+    ink: darken(s.color, 0.55)
+  };
+  let B = {x:R.x, y:R.y, w:R.w, h:R.h};
+  const title = s.title.trim();
+  if(title || s.dateField){
+    const hh = Math.max(9, s.titleSize*PT*1.9 + 2), base = R.y + hh - 3.2;
+    if(title) ops.push(T(R.x, base, title, s.titleSize, C.ink, 'l', true));
+    if(s.dateField){
+      ops.push(T(R.x+R.w-34, base, 'Date', 8, C.ink));
+      ops.push(L(R.x+R.w-27, base+0.5, R.x+R.w, base+0.5, C.lw, C.line));
+    }
+    ops.push(L(R.x, R.y+hh-1.2, R.x+R.w, R.y+hh-1.2, C.lw, C.line));
+    B = {x:R.x, y:R.y+hh, w:R.w, h:Math.max(1, R.h-hh)};
+  }
+  const bl = bleedOf(s);
+  if(bl){
+    // Fill the page and run past its edges. In a spread the spine side keeps its margin.
+    // Edges shared with a neighbouring page (fewer-cuts layout) stop exactly at the page edge.
+    const sd = opt.sides || {}, out = k => sd[k] === false ? 0 : bl;
+    const spineLeft = !!opt.spread && R.innerLeft, spineRight = !!opt.spread && !R.innerLeft;
+    const x1 = spineLeft ? B.x : -out('l'), x2 = spineRight ? B.x + B.w : s.w + out('r');
+    const y1 = (title || s.dateField) ? B.y : -out('t');
+    B = {x:x1, y:y1, w:x2-x1, h:s.h + out('b') - y1};
+    if(sd.l === false) C.ax = 0; else if(sd.r === false) C.ax = s.w;
+    if(sd.t === false) C.ay = 0; else if(sd.b === false) C.ay = s.h;
+    C.marginX = R.x + Math.min(20, R.w*0.15);
+  }
+  TPL[s.tpl](s,B,C,p);
+  if(s.pageNums !== 'none'){
+    const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
+    const n = String(s.startNum + p - 1);
+    if(s.pageNums === 'center') ops.push(T(s.w/2, yb, n, 8, C.ink, 'c'));
+    else {
+      const right = s.pageNums === 'outer' ? R.innerLeft : !R.innerLeft;
+      ops.push(T(right ? R.x+R.w : R.x, yb, n, 8, C.ink, right ? 'r' : 'l'));
+    }
+  }
+  if(opt.guides) ops.push(RC(R.x, R.y, R.w, R.h, 0.18, '#3b82f6', [1.2,1.2]));
+  return ops;
+}
+
+/* One printed piece: a single page, or a booklet spread of two pages with
+   fold ticks at the spine. Piece k holds pages 2k-1 and 2k. */
+function buildPiece(s,k,opt){
+  opt = opt || {};
+  if(!s.spread) return buildPage(s,k,opt);
+  const ops = [], bl = bleedOf(s), sd = opt.sides || {};
+  const half = side => Object.assign({}, opt, {inner:side, spread:true, sides:Object.assign({}, sd, side === 'right' ? {r:true} : {l:true})});
+  place(buildPage(s, 2*k-1, half('right')), 0, 0, 1, ops);
+  place(buildPage(s, 2*k, half('left')), s.w, 0, 1, ops);
+  const tt = clamp(s.mt*0.4, 2, 4), tb = clamp(s.mb*0.4, 2, 4);
+  ops.push(L(s.w, sd.t === false ? 0 : -bl, s.w, tt, 0.25, '#555555'));
+  ops.push(L(s.w, s.h - tb, s.w, s.h + (sd.b === false ? 0 : bl), 0.25, '#555555'));
+  if(opt.guides) ops.push(L(s.w, 0, s.w, s.h, 0.18, '#3b82f6', [1.2,1.2]));
+  return ops;
+}
+
+/* =====================================================================
+   3. Sheet layout: how many pages fit on Letter or A4, and where
+   ===================================================================== */
+function plan(s){
+  const bl = bleedOf(s);
+  const P = PAPERS[s.paper], sm = s.sheetMargin, g = s.shareCuts ? 0 : Math.max(s.gap, 2*bl), pw = pieceW(s), ph = s.h, eps = 1e-6;
+  const mk = (sw,sh) => {
+    const cols = Math.max(0, Math.floor((sw-2*sm+g+eps)/(pw+g)));
+    const rows = Math.max(0, Math.floor((sh-2*sm+g+eps)/(ph+g)));
+    const sc = Math.min(1, (sw-2*sm)/pw, (sh-2*sm)/ph);
+    return {sw,sh,cols,rows,sc,n:cols*rows};
+  };
+  const por = mk(P.w,P.h), lan = mk(P.h,P.w);
+  let pick;
+  if(s.sheetOrient === 'portrait') pick = por;
+  else if(s.sheetOrient === 'landscape') pick = lan;
+  else if(lan.n > por.n) pick = lan;
+  else if(lan.n === por.n && lan.n === 0 && lan.sc > por.sc) pick = lan;
+  else pick = por;
+  let cols = pick.cols, rows = pick.rows, sc = 1, scaled = false;
+  if(cols < 1 || rows < 1){ cols = 1; rows = 1; sc = Math.max(0.05, pick.sc); scaled = true; }
+  const per = cols*rows;
+  const want = s.spread ? Math.ceil(s.pages/2) : s.pages;
+  const total = s.fill ? Math.ceil(want/per)*per : want;
+  const sheets = Math.ceil(total/per);
+  const pageW = pw*sc, pageH = ph*sc;
+  const tw = cols*pageW + (cols-1)*g, th = rows*pageH + (rows-1)*g;
+  // Straight cuts to free every page: shared lines count once, gaps need two cuts each.
+  const cuts = g > 0 ? 2*cols + 2*rows : cols + rows + 2;
+  return {sw:pick.sw, sh:pick.sh, cols, rows, per, sc, scaled, total, sheets, pageW, pageH, tw, th,
+          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl, cuts};
+}
+
+function place(ops,tx,ty,sc,out){
+  for(const o of ops){
+    switch(o.k){
+      case 'l': out.push({k:'l',x1:tx+o.x1*sc,y1:ty+o.y1*sc,x2:tx+o.x2*sc,y2:ty+o.y2*sc,w:o.w*sc,c:o.c,dash:o.dash}); break;
+      case 'd': out.push({k:'d',x:tx+o.x*sc,y:ty+o.y*sc,r:o.r*sc,c:o.c}); break;
+      case 'r': out.push({k:'r',x:tx+o.x*sc,y:ty+o.y*sc,w:o.w*sc,h:o.h*sc,lw:o.lw*sc,c:o.c,dash:o.dash}); break;
+      case 't': out.push({k:'t',x:tx+o.x*sc,y:ty+o.y*sc,s:o.s,size:o.size*sc,c:o.c,a:o.a,b:o.b}); break;
+    }
+  }
+}
+
+function buildSheet(s,pl,idx,preview,guides){
+  const ops = [], start = (idx-1)*pl.per;
+  for(let i=0;i<pl.per;i++){
+    const p = start + i + 1;
+    if(p > pl.total) break;
+    const c = i % pl.cols, r = Math.floor(i/pl.cols);
+    const tx = pl.ox + c*(pl.pageW + pl.gap), ty = pl.oy + r*(pl.pageH + pl.gap);
+    const share = pl.gap === 0;
+    const sides = {l:!share || c === 0, r:!share || c === pl.cols-1, t:!share || r === 0, b:!share || r === pl.rows-1};
+    place(buildPiece(s,p,{guides, sides}), tx, ty, pl.sc, ops);
+    if(preview) ops.push(RC(tx, ty, pl.pageW, pl.pageH, 0.2, '#9aa4b5', [1.5,1.5]));
+  }
+  if(s.cutMarks && !preview){
+    const o = pl.bleed*pl.sc + 1.2, len = Math.min(4, Math.min(pl.ox, pl.oy) - o - 0.6);
+    if(len >= 1.5){
+      const xs = new Set(), ys = new Set(), q = v => Math.round(v*100)/100;
+      for(let c=0;c<pl.cols;c++){ const x = pl.ox + c*(pl.pageW+pl.gap); xs.add(q(x)); xs.add(q(x+pl.pageW)); }
+      for(let r=0;r<pl.rows;r++){ const y = pl.oy + r*(pl.pageH+pl.gap); ys.add(q(y)); ys.add(q(y+pl.pageH)); }
+      const mw = 0.15, mc = '#555555';
+      xs.forEach(x => { ops.push(L(x, pl.oy-o-len, x, pl.oy-o, mw, mc)); ops.push(L(x, pl.oy+pl.th+o, x, pl.oy+pl.th+o+len, mw, mc)); });
+      ys.forEach(y => { ops.push(L(pl.ox-o-len, y, pl.ox-o, y, mw, mc)); ops.push(L(pl.ox+pl.tw+o, y, pl.ox+pl.tw+o+len, y, mw, mc)); });
+    }
+  }
+  return ops;
+}
+
+/* =====================================================================
+   4. Renderers: SVG for the preview, jsPDF for the export
+   ===================================================================== */
+const f3 = n => +n.toFixed(3);
+const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function toSVG(ops,w,h){
+  const lines = new Map(), dots = new Map();
+  let shapes = '';
+  for(const o of ops){
+    if(o.k === 'l'){
+      const key = f3(o.w)+'|'+o.c+'|'+(o.dash ? o.dash.join(' ') : '');
+      let a = lines.get(key); if(!a){ a = []; lines.set(key,a); }
+      a.push('M'+f3(o.x1)+' '+f3(o.y1)+'L'+f3(o.x2)+' '+f3(o.y2));
+    } else if(o.k === 'd'){
+      const key = f3(o.r)+'|'+o.c;
+      let a = dots.get(key); if(!a){ a = []; dots.set(key,a); }
+      a.push('M'+f3(o.x)+' '+f3(o.y)+'h.01');
+    } else if(o.k === 'r'){
+      shapes += '<rect x="'+f3(o.x)+'" y="'+f3(o.y)+'" width="'+f3(o.w)+'" height="'+f3(o.h)+'" fill="none" stroke="'+o.c+'" stroke-width="'+f3(o.lw)+'"'+(o.dash ? ' stroke-dasharray="'+o.dash.join(' ')+'"' : '')+'/>';
+    } else if(o.k === 't'){
+      shapes += '<text x="'+f3(o.x)+'" y="'+f3(o.y)+'" font-size="'+f3(o.size*PT)+'" font-family="Helvetica,Arial,sans-serif" font-weight="'+(o.b?700:400)+'" fill="'+o.c+'" text-anchor="'+(o.a==='c'?'middle':o.a==='r'?'end':'start')+'">'+esc(o.s)+'</text>';
+    }
+  }
+  let body = '<rect width="'+f3(w)+'" height="'+f3(h)+'" fill="#fff"/>';
+  lines.forEach((a,key) => {
+    const [lw,c,dash] = key.split('|');
+    body += '<path d="'+a.join('')+'" fill="none" stroke="'+c+'" stroke-width="'+lw+'"'+(dash ? ' stroke-dasharray="'+dash+'"' : '')+'/>';
+  });
+  dots.forEach((a,key) => {
+    const [r,c] = key.split('|');
+    body += '<path d="'+a.join('')+'" fill="none" stroke="'+c+'" stroke-width="'+f3(r*2)+'" stroke-linecap="round"/>';
+  });
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+f3(w)+' '+f3(h)+'" role="img" aria-label="Page preview">'+body+shapes+'</svg>';
+}
+
+const clean = t => String(t).replace(/[^\x20-\x7E -ÿ]/g,'?');
+
+function drawOps(doc,ops){
+  let dc = '', fc = '', lw = -1, dash = '';
+  const stroke = (c,w,d) => {
+    if(c !== dc){ const [r,g,b] = hexToRgb(c); doc.setDrawColor(r,g,b); dc = c; }
+    if(w !== lw){ doc.setLineWidth(w); lw = w; }
+    const ds = d ? d.join(',') : '';
+    if(ds !== dash){ doc.setLineDashPattern(d || [], 0); dash = ds; }
+  };
+  for(const o of ops){
+    if(o.k === 'l'){ stroke(o.c,o.w,o.dash); doc.line(o.x1,o.y1,o.x2,o.y2); }
+    else if(o.k === 'd'){
+      if(o.c !== fc){ const [r,g,b] = hexToRgb(o.c); doc.setFillColor(r,g,b); fc = o.c; }
+      doc.circle(o.x,o.y,o.r,'F');
+    }
+    else if(o.k === 'r'){ stroke(o.c,o.lw,o.dash); doc.rect(o.x,o.y,o.w,o.h,'S'); }
+    else if(o.k === 't'){
+      const [r,g,b] = hexToRgb(o.c);
+      doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.size); doc.setTextColor(r,g,b);
+      doc.text(clean(o.s), o.x, o.y, {align: o.a==='c' ? 'center' : o.a==='r' ? 'right' : 'left'});
+    }
+  }
+  doc.setLineDashPattern([],0);
+}
+
+async function makePDF(s,onProgress){
+  const pl = plan(s), JS = window.jspdf.jsPDF;
+  const fmt = [Math.min(pl.sw,pl.sh), Math.max(pl.sw,pl.sh)], ori = pl.landscape ? 'landscape' : 'portrait';
+  const doc = new JS({unit:'mm', format:fmt, orientation:ori, compress:true});
+  doc.setProperties({title:'Journal pages', creator:'Printable Journal Generator'});
+  for(let i=1;i<=pl.sheets;i++){
+    if(i > 1) doc.addPage(fmt, ori);
+    drawOps(doc, buildSheet(s,pl,i,false,false));
+    if(onProgress) onProgress(i,pl.sheets);
+    if(i % 2 === 0) await new Promise(r => setTimeout(r,0));
+  }
+  return doc;
+}
+
+/* Exposed so the layout engine can be tested without a browser. */
+if(typeof window !== 'undefined'){
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect};
+}
+if(typeof document === 'undefined') return;
+
+/* =====================================================================
+   5. App state and controls
+   ===================================================================== */
+const LS = 'pjg.settings.v1', LSP = 'pjg.presets.v1';
+const $ = (q,r) => (r || document).querySelector(q);
+function el(tag,attrs){
+  const e = document.createElement(tag);
+  for(const k of Object.keys(attrs || {})){
+    const v = attrs[k];
+    if(v === false || v == null) continue;
+    if(k === 'class') e.className = v;
+    else if(k.slice(0,2) === 'on') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for(let i=2;i<arguments.length;i++){
+    const kids = [].concat(arguments[i]);
+    for(const kd of kids) if(kd != null && kd !== false) e.append(kd.nodeType ? kd : document.createTextNode(kd));
+  }
+  return e;
+}
+
+let S = merge(null);
+const V = {mode:'page', page:1, sheet:1, guides:true};
+
+function loadSaved(){
+  try{ const o = JSON.parse(localStorage.getItem(LS)); if(o) return merge(o); }catch(e){}
+  return merge(null);
+}
+function persist(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function loadPresets(){ try{ return JSON.parse(localStorage.getItem(LSP)) || {}; }catch(e){ return {}; } }
+function savePresets(p){ try{ localStorage.setItem(LSP, JSON.stringify(p)); return true; }catch(e){ return false; } }
+
+const unitDiv = () => S.unit === 'in' ? IN : 1;
+const disp = mm => S.unit === 'in' ? +(mm/IN).toFixed(3) : +mm.toFixed(2);
+const fmtLen = mm => S.unit === 'in' ? (+(mm/IN).toFixed(2))+'' : (+mm.toFixed(1))+'';
+
+function applyPreset(s,k){
+  s.preset = k;
+  const p = ALL_PRESETS.find(x => x.k === k);
+  if(!p || !p.w) return;
+  const land = s.w > s.h;
+  s.w = land ? p.h : p.w; s.h = land ? p.w : p.h;
+}
+function setOrient(s,v){
+  const lo = Math.min(s.w,s.h), hi = Math.max(s.w,s.h);
+  if(v === 'landscape'){ s.w = hi; s.h = lo; } else { s.w = lo; s.h = hi; }
+}
+function matchPreset(){
+  const lo = Math.min(S.w,S.h), hi = Math.max(S.w,S.h);
+  const m = ALL_PRESETS.find(p => p.w && Math.abs(p.w-lo) < 0.06 && Math.abs(p.h-hi) < 0.06);
+  S.preset = m ? m.k : 'custom';
+}
+
+const SPACE_TPLS = SP_KEYS;
+const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height'};
+const COLORS = [['#6b7280','Graphite'],['#a3a9b4','Silver'],['#3b6ea8','Blue'],['#2f7d5b','Green'],['#a8642a','Copper'],['#111827','Black']];
+
+const SECTIONS = [
+  {t:'Page size', open:true, c:[
+    {id:'preset', t:'select', label:'Size preset', opts:'presets', get:s=>s.preset, set:applyPreset},
+    {id:'orient', t:'seg', label:'Orientation', opts:[['portrait','Portrait'],['landscape','Landscape']],
+      get:s=>s.w>s.h?'landscape':'portrait', set:setOrient, after:matchPreset},
+    {id:'w', t:'len', label:'Width', key:'w', min:20, max:600, after:matchPreset},
+    {id:'h', t:'len', label:'Height', key:'h', min:20, max:600, after:matchPreset},
+    {id:'unit', t:'seg', label:'Units', opts:[['mm','Millimetres'],['in','Inches']], key:'unit'},
+    {id:'spread', t:'check', label:'Booklet spreads: two pages side by side, with fold marks', key:'spread'},
+    {id:'spreadHint', t:'hint', text:s=>'Each spread is '+fmtLen(2*s.w)+' × '+fmtLen(s.h)+' '+s.unit+'. Fold it in half at the small ticks at the top and bottom. Each page keeps its inner margin beside the fold.', show:s=>s.spread}
+  ]},
+  {t:'Page style', open:true, c:[
+    {id:'tpl', t:'select', label:'Template', opts:TEMPLATES.map(t=>[t.v,t.l]), key:'tpl'},
+    {id:'spacing', t:'len', label:s=>SPACE_LABEL[s.tpl]||'Spacing', min:1.5, max:30,
+      get:s=>s.spacings[s.tpl], set:(s,v)=>{ s.spacings[s.tpl]=v; }, show:s=>SPACE_TPLS.includes(s.tpl)},
+    {id:'weight', t:'range', label:s=>s.tpl==='dots'?'Dot size':'Line weight', key:'weight', min:.1, max:2, step:.05,
+      fmt:s=>s.tpl==='dots'?(2*dotRadius(s.weight)).toFixed(2)+' mm':s.weight.toFixed(2)+' pt', show:s=>s.tpl!=='blank'},
+    {id:'intensity', t:'range', label:'Darkness', key:'intensity', min:10, max:100, step:5, fmt:s=>s.intensity+'%'},
+    {id:'color', t:'color', label:'Ink colour', key:'color'},
+    {id:'marginLine', t:'check', label:'Vertical margin line', key:'marginLine', show:s=>s.tpl==='lined'},
+    {id:'cueW', t:'len', label:'Cue column', key:'cueW', min:15, max:120, show:s=>s.tpl==='cornell'},
+    {id:'summaryH', t:'len', label:'Summary height', key:'summaryH', min:15, max:120, show:s=>s.tpl==='cornell'},
+    {id:'cornellLines', t:'check', label:'Ruled lines in notes and summary', key:'cornellLines', show:s=>s.tpl==='cornell'},
+    {id:'cornellLabels', t:'check', label:'Section labels', key:'cornellLabels', show:s=>s.tpl==='cornell'},
+    {id:'cbSize', t:'len', label:'Checkbox size', key:'cbSize', min:2, max:10, show:s=>s.tpl==='checklist'},
+    {id:'startHour', t:'num', label:'First hour (0–23)', key:'startHour', min:0, max:23, show:s=>s.tpl==='daily'},
+    {id:'endHour', t:'num', label:'Last hour (1–24)', key:'endHour', min:1, max:24, show:s=>s.tpl==='daily'},
+    {id:'halfHours', t:'check', label:'Half-hour lines', key:'halfHours', show:s=>s.tpl==='daily'},
+    {id:'hour24', t:'check', label:'24-hour labels', key:'hour24', show:s=>s.tpl==='daily'},
+    {id:'priorities', t:'check', label:'Top priorities box', key:'priorities', show:s=>s.tpl==='daily'},
+    {id:'dailyNotes', t:'check', label:'Notes column', key:'dailyNotes', show:s=>s.tpl==='daily'},
+    {id:'weekStart', t:'select', label:'Week starts on', opts:[['1','Monday'],['0','Sunday']], key:'weekStart', numeric:true, show:s=>s.tpl==='weekly'},
+    {id:'weekLayout', t:'select', label:'Weekly layout', opts:[['grid','Boxes (7 days + notes)'],['rows','Stacked rows']], key:'weekLayout', show:s=>s.tpl==='weekly'}
+  ]},
+  {t:'Margins', c:[
+    {id:'mt', t:'len', label:'Top', key:'mt', min:0, max:60},
+    {id:'mb', t:'len', label:'Bottom', key:'mb', min:0, max:60},
+    {id:'mi', t:'len', label:'Inner (binding)', key:'mi', min:0, max:60},
+    {id:'mo', t:'len', label:'Outer', key:'mo', min:0, max:60},
+    {id:'mirror', t:'check', label:'Alternate the binding side on even pages', key:'mirror'},
+    {id:'mirrorHint', t:'hint', text:'The inner margin sits on the left of odd pages and the right of even pages, for double-sided books.', show:s=>s.mirror}
+  ]},
+  {t:'Header and footer', c:[
+    {id:'title', t:'text', label:'Page title', key:'title', placeholder:'Optional, e.g. Notes'},
+    {id:'titleSize', t:'num', label:'Title size (pt)', key:'titleSize', min:8, max:36},
+    {id:'dateField', t:'check', label:'Date line', key:'dateField'},
+    {id:'pageNums', t:'select', label:'Page numbers', opts:[['none','None'],['outer','Outer corner'],['inner','Inner corner'],['center','Centre']], key:'pageNums'},
+    {id:'startNum', t:'num', label:'First page number', key:'startNum', min:0, max:9999, show:s=>s.pageNums!=='none'}
+  ]},
+  {t:'Print on paper', open:true, c:[
+    {id:'paper', t:'seg', label:'Paper', opts:[['letter','US Letter'],['a4','A4']], key:'paper'},
+    {id:'sheetOrient', t:'select', label:'Sheet orientation', opts:[['auto','Automatic (fits most pages)'],['portrait','Portrait'],['landscape','Landscape']], key:'sheetOrient'},
+    {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
+    {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},
+    {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30, show:s=>!s.shareCuts},
+    {id:'pages', t:'num', label:s=>s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
+    {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
+    {id:'bleedHint', t:'hint', text:s=>s.shareCuts ? 'The pattern fills each page and runs past the outside of the block, so a cut that is slightly off still looks clean. Inside the block, neighbouring pages meet at a shared cut line. The cut marks show the true page edges.' : 'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
+    {id:'cutMarks', t:'check', label:'Cut marks in the margin', key:'cutMarks'},
+    {id:'fill', t:'check', label:'Fill every sheet (add extra pages to complete the last sheet)', key:'fill'},
+    {id:'printHint', t:'hint', text:'Print the PDF at 100% or Actual size. Fit to page rescales the pages and they will no longer match the size you chose.'}
+  ]}
+];
+
+const read = c => c.get ? c.get(S) : S[c.key];
+const write = (c,v) => { if(c.set) c.set(S,v); else S[c.key] = v; };
+const FIELDS = [];
+
+function commit(c){
+  if(c && c.after) c.after();
+  S = sanitize(S);
+  syncAll(); vis(); update();
+}
+
+function makeField(c){
+  const id = 'f_'+c.id;
+  const wide = !['len','num'].includes(c.t);
+  const wrap = el('div', {class:'field'+(wide?' wide':''), 'data-id':c.id});
+  const labText = () => typeof c.label === 'function' ? c.label(S) : c.label;
+  const lab = c.label ? el('label', {class:'lab', for:id}, labText()) : null;
+  const F = {c, wrap, sync(){}};
+
+  switch(c.t){
+    case 'select': {
+      const sel = el('select', {id});
+      if(c.opts === 'presets'){
+        for(const g of PRESETS){
+          const og = el('optgroup', {label:g.g});
+          for(const it of g.items) og.append(el('option', {value:it.k}, it.l));
+          sel.append(og);
+        }
+      } else for(const [v,l] of c.opts) sel.append(el('option', {value:v}, l));
+      sel.addEventListener('change', () => { write(c, c.numeric ? +sel.value : sel.value); commit(c); });
+      wrap.append(lab, sel);
+      F.sync = () => { sel.value = String(read(c)); };
+      break;
+    }
+    case 'seg': {
+      const row = el('div', {class:'seg', role:'group', 'aria-label':c.label});
+      const btns = c.opts.map(([v,l]) => el('button', {type:'button', 'data-v':v, 'aria-pressed':'false',
+        onclick:() => { write(c,v); commit(c); }}, l));
+      row.append(...btns);
+      wrap.append(el('span', {class:'lab'}, c.label), row);
+      F.sync = () => btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === String(read(c)))));
+      break;
+    }
+    case 'len': {
+      const inp = el('input', {id, type:'number', inputmode:'decimal', step:'any'});
+      const u = el('span', {class:'unit'});
+      const apply = final => {
+        let v = parseFloat(inp.value);
+        if(!isFinite(v)){ if(final) inp.value = disp(read(c)); return; }
+        let mm = v*unitDiv();
+        if(mm < c.min - 1e-9 || mm > c.max + 1e-9){ if(!final) return; mm = clamp(mm, c.min, c.max); }
+        write(c, mm); commit(c);
+        if(final) inp.value = disp(read(c));
+      };
+      inp.addEventListener('input', () => apply(false));
+      inp.addEventListener('change', () => apply(true));
+      wrap.append(lab, el('div', {class:'inwrap'}, inp, u));
+      F.sync = () => { if(document.activeElement !== inp) inp.value = disp(read(c)); u.textContent = S.unit; if(lab) lab.textContent = labText(); };
+      break;
+    }
+    case 'num': {
+      const inp = el('input', {id, type:'number', inputmode:'numeric', step:1});
+      const apply = final => {
+        let v = parseFloat(inp.value);
+        if(!isFinite(v)){ if(final) inp.value = read(c); return; }
+        if(v < c.min || v > c.max){ if(!final) return; v = clamp(v, c.min, c.max); }
+        write(c, Math.round(v)); commit(c);
+        if(final) inp.value = read(c);
+      };
+      inp.addEventListener('input', () => apply(false));
+      inp.addEventListener('change', () => apply(true));
+      wrap.append(lab, inp);
+      F.sync = () => { if(document.activeElement !== inp) inp.value = read(c); if(lab) lab.textContent = labText(); };
+      break;
+    }
+    case 'range': {
+      const inp = el('input', {id, type:'range', min:c.min, max:c.max, step:c.step});
+      const out = el('output', {for:id});
+      inp.addEventListener('input', () => { write(c, +inp.value); commit(c); });
+      wrap.append(lab, el('div', {class:'rangerow'}, inp, out));
+      F.sync = () => { inp.value = read(c); out.textContent = c.fmt(S); if(lab) lab.textContent = labText(); };
+      break;
+    }
+    case 'text': {
+      const inp = el('input', {id, type:'text', maxlength:60, placeholder:c.placeholder||'', autocomplete:'off'});
+      inp.addEventListener('input', () => { write(c, inp.value); commit(c); });
+      wrap.append(lab, inp);
+      F.sync = () => { if(document.activeElement !== inp) inp.value = read(c); };
+      break;
+    }
+    case 'check': {
+      const inp = el('input', {id, type:'checkbox'});
+      inp.addEventListener('change', () => { write(c, inp.checked); commit(c); });
+      wrap.append(el('label', {class:'chk'}, inp, el('span', {}, c.label)));
+      F.sync = () => { inp.checked = !!read(c); };
+      break;
+    }
+    case 'color': {
+      const row = el('div', {class:'sw-row'});
+      const sws = COLORS.map(([hx,name]) => el('button', {type:'button', class:'sw', 'aria-label':name, title:name, 'data-c':hx,
+        style:'background:'+hx, 'aria-pressed':'false', onclick:() => { write(c,hx); commit(c); }}));
+      const pick = el('input', {id, type:'color', 'aria-label':'Custom colour'});
+      pick.addEventListener('input', () => { write(c, pick.value); commit(c); });
+      row.append(...sws, pick);
+      wrap.append(el('span', {class:'lab'}, c.label), row);
+      F.sync = () => { const v = read(c).toLowerCase(); sws.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === v))); pick.value = v; };
+      break;
+    }
+    case 'hint': {
+      const txt = () => typeof c.text === 'function' ? c.text(S) : c.text;
+      const p = el('p', {class:'hint'}, txt());
+      wrap.append(p);
+      F.sync = () => { p.textContent = txt(); };
+      break;
+    }
+  }
+  return F;
+}
+
+function buildControls(){
+  const host = $('#controls');
+  for(const sec of SECTIONS){
+    const det = el('details', {class:'sec', open:!!sec.open});
+    det.append(el('summary', {}, sec.t));
+    const body = el('div', {class:'sec-body'});
+    for(const c of sec.c){ const F = makeField(c); FIELDS.push(F); body.append(F.wrap); }
+    det.append(body); host.append(det);
+  }
+  host.append(buildSaveSection());
+}
+
+function syncAll(){ for(const F of FIELDS) F.sync(); refreshJson(); }
+function vis(){ for(const F of FIELDS) F.wrap.hidden = F.c.show ? !F.c.show(S) : false; }
+
+/* ---------- starters, saved presets, settings backup ---------- */
+const STARTERS = [
+  {n:'A5 dot grid', p:{w:148,h:210,preset:'a5',tpl:'dots',pages:1}},
+  {n:'Letter ruled', p:{w:215.9,h:279.4,preset:'letter',tpl:'lined',spacings:{lined:8},mt:14,mb:14,mi:22,mo:12,marginLine:true,pages:1}},
+  {n:'A5 Cornell notes', p:{w:148,h:210,preset:'a5',tpl:'cornell',title:'Notes',dateField:true,pages:1}},
+  {n:'A5 daily planner', p:{w:148,h:210,preset:'a5',tpl:'daily',title:'Today',dateField:true,pages:1}},
+  {n:'Half-letter weekly', p:{w:139.7,h:215.9,preset:'half',tpl:'weekly',title:'Week of',pages:1}},
+  {n:'Pocket grid', p:{w:88.9,h:139.7,preset:'fn',tpl:'grid',mt:8,mb:8,mi:8,mo:8,pages:1}}
+];
+function loadSettings(o,keepSheet){
+  const keep = keepSheet ? {unit:S.unit, paper:S.paper} : {};
+  S = merge(Object.assign({}, o, keep));
+  V.page = 1; V.sheet = 1;
+  syncAll(); vis(); update();
+}
+function buildStarters(){
+  const host = $('#starters');
+  for(const st of STARTERS) host.append(el('button', {type:'button', class:'chip', onclick:() => { loadSettings(st.p, true); toast(st.n+' loaded'); }}, st.n));
+}
+
+let jsonBox = null, presetList = null;
+function refreshJson(){ if(jsonBox && document.activeElement !== jsonBox) jsonBox.value = JSON.stringify(diff(S), null, 1); }
+function renderPresetList(){
+  if(!presetList) return;
+  presetList.textContent = '';
+  const ps = loadPresets(), names = Object.keys(ps);
+  if(!names.length){ presetList.append(el('p', {class:'hint'}, 'No saved presets yet. Name the current setup above to keep it on this device.')); return; }
+  for(const n of names){
+    presetList.append(el('div', {class:'row'}, el('span', {}, n), el('div', {},
+      el('button', {type:'button', class:'btn small', onclick:() => { loadSettings(ps[n]); toast('Loaded '+n); }}, 'Load'),
+      el('button', {type:'button', class:'btn small', onclick:() => { const q = loadPresets(); delete q[n]; savePresets(q); renderPresetList(); }}, 'Delete'))));
+  }
+}
+function buildSaveSection(){
+  const det = el('details', {class:'sec'});
+  det.append(el('summary', {}, 'Save and share'));
+  const body = el('div', {class:'sec-body'});
+  const name = el('input', {id:'presetName', type:'text', maxlength:40, placeholder:'Preset name', autocomplete:'off'});
+  presetList = el('div', {class:'list'});
+  jsonBox = el('textarea', {id:'jsonBox', spellcheck:'false', 'aria-label':'Settings as text'});
+  body.append(
+    el('div', {class:'field wide'}, el('label', {class:'lab', for:'presetName'}, 'Save this setup on this device'),
+      el('div', {class:'inline'}, name, el('button', {type:'button', class:'btn', onclick:() => {
+        const n = name.value.trim(); if(!n){ toast('Give the preset a name first'); return; }
+        const ps = loadPresets(); ps[n] = diff(S);
+        if(savePresets(ps)){ name.value = ''; renderPresetList(); toast('Saved '+n); } else toast('This browser blocked saving. Use the settings text below instead.');
+      }}, 'Save'))),
+    el('div', {class:'field wide'}, presetList),
+    el('div', {class:'field wide'}, el('label', {class:'lab', for:'jsonBox'}, 'Settings as text. Copy to share, or paste someone else’s and apply.'), jsonBox),
+    el('div', {class:'field wide btns'},
+      el('button', {type:'button', class:'btn small', onclick:copyJson}, 'Copy'),
+      el('button', {type:'button', class:'btn small', onclick:applyJson}, 'Apply pasted settings'),
+      el('button', {type:'button', class:'btn small', onclick:() => saveFile('journal-settings.json', new Blob([JSON.stringify(diff(S),null,1)], {type:'application/json'}))}, 'Save settings file'),
+      el('button', {type:'button', class:'btn small', onclick:() => { S = merge(null); V.page = 1; V.sheet = 1; syncAll(); vis(); update(); toast('Reset to defaults'); }}, 'Reset')));
+  det.append(body);
+  renderPresetList();
+  return det;
+}
+async function copyJson(){
+  const text = JSON.stringify(diff(S), null, 1);
+  try{ await navigator.clipboard.writeText(text); toast('Settings copied'); }
+  catch(e){ jsonBox.value = text; jsonBox.focus(); jsonBox.select(); toast('Press and hold to copy the selected text'); }
+}
+function applyJson(){
+  try{
+    const o = JSON.parse(jsonBox.value);
+    if(!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('not settings');
+    loadSettings(o); toast('Settings applied');
+  }catch(e){ toast('That text is not valid settings JSON'); }
+}
+
+/* ---------- preview ---------- */
+let raf = 0, cur = null;
+function update(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(render); persist(); }
+
+function fitStage(){
+  const st = $('#stage'), svg = st.firstElementChild;
+  if(!svg || !cur || st.clientWidth === 0) return;
+  const aw = Math.max(40, st.clientWidth - 24), ah = Math.max(40, st.clientHeight - 24);
+  const k = Math.min(aw/cur.w, ah/cur.h);
+  svg.style.width = (cur.w*k)+'px'; svg.style.height = (cur.h*k)+'px';
+}
+
+function render(){
+  const pl = plan(S);
+  V.page = clamp(V.page, 1, pl.total); V.sheet = clamp(V.sheet, 1, pl.sheets);
+  let svg, w, h;
+  if(V.mode === 'page'){ w = pieceW(S); h = S.h; svg = toSVG(buildPiece(S, V.page, {guides:V.guides}), w, h); }
+  else { w = pl.sw; h = pl.sh; svg = toSVG(buildSheet(S, pl, V.sheet, true, V.guides), w, h); }
+  $('#stage').innerHTML = svg; cur = {w,h}; fitStage();
+
+  const n = V.mode === 'page' ? pl.total : pl.sheets, i = V.mode === 'page' ? V.page : V.sheet;
+  $('#pagerLbl').textContent = (V.mode === 'page' ? (S.spread ? 'Spread ' : 'Page ') : 'Sheet ')+i+' / '+n;
+  $('#prev').disabled = i <= 1; $('#next').disabled = i >= n;
+  $('#mPage').setAttribute('aria-pressed', String(V.mode === 'page'));
+  $('#mSheet').setAttribute('aria-pressed', String(V.mode === 'sheet'));
+
+  const pn = presetLabel(S.preset);
+  const size = (S.preset !== 'custom' && pn ? pn.split(' · ')[0]+' · ' : '')+fmtLen(S.w)+' × '+fmtLen(S.h)+' '+S.unit;
+  const unitName = S.spread ? 'spread' : 'page';
+  const lay = pl.paper+' '+(pl.landscape ? 'landscape' : 'portrait')+' · '+pl.per+' '+unitName+(pl.per === 1 ? '' : 's')+' per sheet'+(pl.per > 1 ? ' ('+pl.cols+'×'+pl.rows+')' : '')
+    +(pl.bleed ? ' · '+fmtLen(pl.bleed)+' '+S.unit+' bleed'+(pl.gap ? ', '+fmtLen(pl.gap)+' '+S.unit+' gap' : '') : '')+' · '+pl.cuts+' cuts';
+  const count = pl.total+' '+unitName+(pl.total === 1 ? '' : 's')+(S.spread ? ' ('+pl.total*2+' pages)' : '');
+  $('#info').textContent = size+(S.spread ? ' · spreads '+fmtLen(2*S.w)+' × '+fmtLen(S.h) : '')+'  |  '+lay+'  |  '+count+' on '+pl.sheets+' sheet'+(pl.sheets === 1 ? '' : 's');
+  const note = $('#note');
+  if(pl.scaled){ note.hidden = false; note.textContent = 'This '+(S.spread ? 'spread' : 'page')+' is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
+  else note.hidden = true;
+  $('#subline').textContent = pl.paper+' · '+S.unit+' · '+(TEMPLATES.find(t => t.v === S.tpl) || {}).l.toLowerCase();
+}
+
+function bindPreview(){
+  $('#mPage').onclick = () => { V.mode = 'page'; render(); };
+  $('#mSheet').onclick = () => { V.mode = 'sheet'; render(); };
+  $('#prev').onclick = () => { if(V.mode === 'page') V.page--; else V.sheet--; render(); };
+  $('#next').onclick = () => { if(V.mode === 'page') V.page++; else V.sheet++; render(); };
+  $('#guides').onchange = e => { V.guides = e.target.checked; render(); };
+  $('#collapse').onclick = () => {
+    const p = $('#preview'), c = p.classList.toggle('collapsed');
+    $('#collapse').textContent = c ? 'Show preview' : 'Hide preview';
+    if(!c) fitStage();
+  };
+  if(window.ResizeObserver) new ResizeObserver(fitStage).observe($('#stage'));
+  else window.addEventListener('resize', fitStage);
+}
+
+/* ---------- export ---------- */
+let toastT = 0;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 4200);
+}
+const hasHost = () => !!(window.claude && window.claude.use);
+async function saveFile(filename, blob){
+  if(hasHost()){
+    let dl = null;
+    try{ dl = await window.claude.use('downloads'); }catch(e){}
+    if(!dl){ toast('Saving files is not available in this view. Open the page in claude.ai to export.'); return false; }
+    try{ await dl.save({filename, data:blob}); toast('Saved '+filename); return true; }
+    catch(e){ if(!(e && e.code === 'declined')) toast('Could not save: '+((e && e.message) || 'unknown error')); return false; }
+  }
+  if(useShareSheet()){
+    const file = new File([blob], filename, {type: blob.type || 'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})) return shareFile(file);
+  }
+  const url = URL.createObjectURL(blob);
+  const a = el('a', {href:url, download:filename}); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  toast('Saved '+filename); return true;
+}
+/* Installed iPhone and iPad apps can't download files, so the PDF goes to the
+   share sheet instead (Save to Files, Print, AirDrop). Sharing needs a recent tap,
+   so if building the PDF took too long we ask for one more tap. */
+function useShareSheet(){
+  const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return standalone && ios && typeof File === 'function' && !!navigator.share;
+}
+async function shareFile(file){
+  const btn = $('#btnShare');
+  try{ await navigator.share({files:[file], title:file.name}); btn.hidden = true; return true; }
+  catch(e){
+    if(e && e.name === 'AbortError'){ btn.hidden = true; return false; }
+    btn.hidden = false;
+    btn.onclick = () => shareFile(file);
+    toast('PDF ready. Tap Save or print PDF.');
+    return false;
+  }
+}
+function pdfName(){
+  const base = S.preset !== 'custom' ? S.preset : Math.round(S.w)+'x'+Math.round(S.h)+'mm';
+  return 'journal-'+base+'-'+S.tpl+(S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
+}
+async function exportPDF(){
+  if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }
+  const btn = $('#btnPdf'), label = btn.textContent;
+  btn.disabled = true;
+  try{
+    const doc = await makePDF(S, (i,n) => { btn.textContent = 'Building '+i+' / '+n+'…'; });
+    await saveFile(pdfName(), doc.output('blob'));
+  }catch(e){ console.error(e); toast('Could not build the PDF: '+((e && e.message) || e)); }
+  finally{ btn.disabled = false; btn.textContent = label; }
+}
+
+/* ---------- start ---------- */
+S = loadSaved();
+buildControls(); buildStarters(); bindPreview();
+$('#btnPdf').onclick = exportPDF;
+syncAll(); vis(); render();
+})();
+</script>
+
+<script>
+/* Offline support and the Install button. */
+(function(){
+  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(e => console.warn('Offline mode is unavailable:', e));
+    });
+  }
+  const ib = document.getElementById('btnInstall');
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; ib.hidden = false; });
+  ib.addEventListener('click', async () => {
+    if(!deferred) return;
+    ib.hidden = true; deferred.prompt();
+    try{ await deferred.userChoice; }catch(e){}
+    deferred = null;
+  });
+  window.addEventListener('appinstalled', () => { ib.hidden = true; deferred = null; });
+})();
+</script>
+</body>
+</html>

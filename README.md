@@ -10,6 +10,7 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 - **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine, or butt pages together so neighbours share cut lines (fewer cuts)
 - **Booklets:** print spreads double-sided in saddle-stitch order, so the stack folds and staples into one booklet with the pages in reading order
 - **Dated pages:** fill a month of daily or weekly pages with real dates, with a month calendar page first, or print monthly calendars
+- **Ring holes:** punch marks for A5, Personal and Pocket six-ring planners, or a clear punch zone for disc-bound planners, with the page content kept away from the holes
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection
 
 Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages so they no longer match the size you picked.

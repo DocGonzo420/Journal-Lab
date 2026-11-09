@@ -16,7 +16,7 @@ Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages s
 
 ## Install it as an app
 
-Once GitHub Pages is on, open the app's address (`https://<your-user>.github.io/Journal-Lab/`) and:
+ (`https://<your-user>.github.io/Journal-Lab/`) and:
 
 - **iPhone or iPad (Safari):** tap Share, then **Add to Home Screen**. In the installed app, Download PDF opens the share sheet, where you can pick **Save to Files** or **Print**.
 - **Android (Chrome):** tap **Install app** at the top of the page, or the ⋮ menu, then **Install app**.

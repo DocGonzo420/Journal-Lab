@@ -235,7 +235,8 @@ const DEFAULTS = {
   title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
   spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false,
-  dated:false, startDate:'', monthCal:true, monthFill:true
+  dated:false, startDate:'', monthCal:true, monthFill:true,
+  holes:'none', holeEdge:7
 };
 const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill'];
 
@@ -262,6 +263,7 @@ function sanitize(s){
   s.sheetMargin = num(s.sheetMargin,5,0,30); s.gap = num(s.gap,0,0,30);
   s.pages = Math.round(num(s.pages,4,1,200));
   s.bleed = num(s.bleed,2,0.5,6);
+  if(!HOLES[s.holes]) s.holes = 'none'; s.holeEdge = num(s.holeEdge,7,4,15);
   s.startDate = /^\d{4}-\d{2}-\d{2}$/.test(s.startDate) && isFinite(Date.parse(s.startDate)) ? s.startDate : '';
   for(const k of BOOLS) s[k] = !!s[k];
   return s;
@@ -294,6 +296,7 @@ function diff(s){
 const L  = (x1,y1,x2,y2,w,c,dash) => ({k:'l',x1,y1,x2,y2,w,c,dash});
 const D  = (x,y,r,c) => ({k:'d',x,y,r,c});
 const RC = (x,y,w,h,lw,c,dash) => ({k:'r',x,y,w,h,lw,c,dash});
+const O  = (x,y,r,lw,c) => ({k:'o',x,y,r,lw,c});
 const T  = (x,y,s,size,c,a,b) => ({k:'t',x,y,s,size,c,a:a||'l',b:!!b});
 
 function hexToRgb(hx){ const n = parseInt(hx.replace('#',''),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
@@ -307,6 +310,29 @@ const dotRadius = w => 0.1 + w*0.32;
 /* Bleed: dot grid, square grid and ruled patterns can fill the page and run
    past its edges, so a slightly-off cut still looks clean. */
 const BLEED_TPLS = ['dots','grid','lined'];
+/* Ring holes for loose-leaf planners. gaps are the distances between hole centres
+   (mm), centred on the binding edge; r is the hole radius. Disc-bound punches set
+   their own spacing, so that option only keeps the punch zone clear. */
+const HOLES = {
+  none:     {l:'None'},
+  a5:       {l:'A5 six-ring (19 / 70 mm)', gaps:[19,19,70,19,19], r:2.9},
+  personal: {l:'Personal or A6 six-ring (19 / 51 mm)', gaps:[19,19,51,19,19], r:2.75},
+  pocket:   {l:'Pocket six-ring (19 mm)', gaps:[19,19,19,19,19], r:2.4},
+  disc:     {l:'Disc-bound (keep the punch zone clear)', zone:12}
+};
+const holesOf = s => s.spread || s.holes === 'none' ? null : HOLES[s.holes];
+/* Distance from the binding edge that must stay free of content. */
+function holeZone(s){
+  const H = holesOf(s); if(!H) return 0;
+  return H.zone || s.holeEdge + H.r + 3;
+}
+/* Hole centres along the binding edge, centred on the page; ones that would fall off the page are dropped. */
+function holeYs(s){
+  const H = holesOf(s); if(!H || !H.gaps) return {ys:[], all:0};
+  const span = H.gaps.reduce((a,b) => a+b, 0);
+  const ys = [s.h/2 - span/2]; for(const g of H.gaps) ys.push(ys[ys.length-1] + g);
+  return {ys: ys.filter(y => y - H.r >= 0.5 && y + H.r <= s.h - 0.5), all: ys.length};
+}
 const bleedOf = s => s.bleedOn && BLEED_TPLS.includes(s.tpl) ? s.bleed : 0;
 /* Booklet spreads: two pages side by side, folded at the spine. */
 const pieceW = s => s.spread ? 2*s.w : s.w;
@@ -321,7 +347,8 @@ function bookletSide(k, n){
 
 function contentRect(s,p,inner){
   const innerLeft = inner ? inner === 'left' : (!s.mirror || (p % 2 === 1));
-  const l = innerLeft ? s.mi : s.mo, r = innerLeft ? s.mo : s.mi;
+  const mi = Math.max(s.mi, holeZone(s));
+  const l = innerLeft ? mi : s.mo, r = innerLeft ? s.mo : mi;
   return {x:l, y:s.mt, w:Math.max(1, s.w-l-r), h:Math.max(1, s.h-s.mt-s.mb), innerLeft};
 }
 
@@ -541,7 +568,8 @@ function buildPage(s,p,opt){
     // Fill the page and run past its edges. In a spread the spine side keeps its margin.
     // Edges shared with a neighbouring page (fewer-cuts layout) stop exactly at the page edge.
     const sd = opt.sides || {}, out = k => sd[k] === false ? 0 : bl;
-    const spineLeft = !!opt.spread && R.innerLeft, spineRight = !!opt.spread && !R.innerLeft;
+    const keep = !!opt.spread || !!holesOf(s);
+    const spineLeft = keep && R.innerLeft, spineRight = keep && !R.innerLeft;
     const x1 = spineLeft ? B.x : -out('l'), x2 = spineRight ? B.x + B.w : s.w + out('r');
     const y1 = band ? B.y : -out('t');
     B = {x:x1, y:y1, w:x2-x1, h:s.h + out('b') - y1};
@@ -550,6 +578,21 @@ function buildPage(s,p,opt){
     C.marginX = R.x + Math.min(20, R.w*0.15);
   }
   TPL[info.tpl](s,B,C,p,info);
+  const H = holesOf(s);
+  if(H){
+    // Punch marks on the binding edge: an outlined hole with a small cross at its centre.
+    const hc = '#8a8a8a', hw = 0.2;
+    if(H.gaps){
+      const x = R.innerLeft ? s.holeEdge : s.w - s.holeEdge;
+      for(const y of holeYs(s).ys){
+        ops.push(O(x, y, H.r, hw, hc));
+        ops.push(L(x-0.8, y, x+0.8, y, hw, hc), L(x, y-0.8, x, y+0.8, hw, hc));
+      }
+    } else {
+      const x = R.innerLeft ? H.zone - 2 : s.w - H.zone + 2;
+      ops.push(L(x, 0, x, s.h, hw, hc, [1,1.5]));
+    }
+  }
   if(s.pageNums !== 'none'){
     const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
     const n = String(s.startNum + p - 1);
@@ -633,6 +676,7 @@ function place(ops,tx,ty,sc,out){
       case 'l': out.push({k:'l',x1:tx+o.x1*sc,y1:ty+o.y1*sc,x2:tx+o.x2*sc,y2:ty+o.y2*sc,w:o.w*sc,c:o.c,dash:o.dash}); break;
       case 'd': out.push({k:'d',x:tx+o.x*sc,y:ty+o.y*sc,r:o.r*sc,c:o.c}); break;
       case 'r': out.push({k:'r',x:tx+o.x*sc,y:ty+o.y*sc,w:o.w*sc,h:o.h*sc,lw:o.lw*sc,c:o.c,dash:o.dash}); break;
+      case 'o': out.push({k:'o',x:tx+o.x*sc,y:ty+o.y*sc,r:o.r*sc,lw:o.lw*sc,c:o.c}); break;
       case 't': out.push({k:'t',x:tx+o.x*sc,y:ty+o.y*sc,s:o.s,size:o.size*sc,c:o.c,a:o.a,b:o.b}); break;
     }
   }
@@ -689,6 +733,8 @@ function toSVG(ops,w,h){
       a.push('M'+f3(o.x)+' '+f3(o.y)+'h.01');
     } else if(o.k === 'r'){
       shapes += '<rect x="'+f3(o.x)+'" y="'+f3(o.y)+'" width="'+f3(o.w)+'" height="'+f3(o.h)+'" fill="none" stroke="'+o.c+'" stroke-width="'+f3(o.lw)+'"'+(o.dash ? ' stroke-dasharray="'+o.dash.join(' ')+'"' : '')+'/>';
+    } else if(o.k === 'o'){
+      shapes += '<circle cx="'+f3(o.x)+'" cy="'+f3(o.y)+'" r="'+f3(o.r)+'" fill="none" stroke="'+o.c+'" stroke-width="'+f3(o.lw)+'"/>';
     } else if(o.k === 't'){
       shapes += '<text x="'+f3(o.x)+'" y="'+f3(o.y)+'" font-size="'+f3(o.size*PT)+'" font-family="Helvetica,Arial,sans-serif" font-weight="'+(o.b?700:400)+'" fill="'+o.c+'" text-anchor="'+(o.a==='c'?'middle':o.a==='r'?'end':'start')+'">'+esc(o.s)+'</text>';
     }
@@ -722,6 +768,7 @@ function drawOps(doc,ops){
       doc.circle(o.x,o.y,o.r,'F');
     }
     else if(o.k === 'r'){ stroke(o.c,o.lw,o.dash); doc.rect(o.x,o.y,o.w,o.h,'S'); }
+    else if(o.k === 'o'){ stroke(o.c,o.lw,null); doc.circle(o.x,o.y,o.r,'S'); }
     else if(o.k === 't'){
       const [r,g,b] = hexToRgb(o.c);
       doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.size); doc.setTextColor(r,g,b);
@@ -747,7 +794,7 @@ async function makePDF(s,onProgress){
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone};
 }
 if(typeof document === 'undefined') return;
 
@@ -856,6 +903,12 @@ const SECTIONS = [
     {id:'mirror', t:'check', label:'Alternate the binding side on even pages', key:'mirror'},
     {id:'mirrorHint', t:'hint', text:'The inner margin sits on the left of odd pages and the right of even pages, for double-sided books.', show:s=>s.mirror}
   ]},
+  {t:'Ring holes', c:[
+    {id:'holes', t:'select', label:'Punch marks for a planner', opts:Object.keys(HOLES).map(k => [k, HOLES[k].l]), key:'holes', show:s=>!s.spread},
+    {id:'holeEdge', t:'len', label:'Hole centre from the edge', key:'holeEdge', min:4, max:15, show:s=>!!holesOf(s) && !!holesOf(s).gaps},
+    {id:'holesHint', t:'hint', text:holesHint, show:s=>!!holesOf(s)},
+    {id:'holesSpread', t:'hint', text:'Ring holes are off while booklet spreads are on.', show:s=>s.spread && s.holes !== 'none'}
+  ]},
   {t:'Header and footer', c:[
     {id:'title', t:'text', label:'Page title', key:'title', placeholder:'Optional, e.g. Notes'},
     {id:'titleSize', t:'num', label:'Title size (pt)', key:'titleSize', min:8, max:36},
@@ -880,6 +933,15 @@ const SECTIONS = [
   ]}
 ];
 
+function holesHint(s){
+  const H = holesOf(s); if(!H) return '';
+  const side = s.mirror ? 'binding edge (left on odd pages, right on even pages)' : 'left edge';
+  const keep = 'Page content stays at least '+fmtLen(holeZone(s))+' '+s.unit+' clear of that edge.';
+  if(!H.gaps) return 'Disc punches set their own spacing, so only a light line at the punch depth is printed, on the '+side+'. '+keep;
+  const {ys, all} = holeYs(s);
+  const fit = ys.length < all ? ' Only '+ys.length+' of '+all+' holes fit on this page height, so check it matches your rings.' : '';
+  return 'Marks show where to punch '+all+' holes on the '+side+'. '+keep+' Print at 100% so the marks line up with your rings, and try one page against a refill first.'+fit;
+}
 function datedHint(s){
   if(!isDated(s)) return '';
   const n = pageCount(s), cal = hasMonthCal(s);

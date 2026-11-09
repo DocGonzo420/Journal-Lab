@@ -217,7 +217,7 @@ const presetLabel = k => (ALL_PRESETS.find(p => p.k === k) || {}).l || '';
 const TEMPLATES = [
   {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lined', l:'Ruled lines'},
   {v:'cornell', l:'Cornell notes'}, {v:'checklist', l:'Checklist'},
-  {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'blank', l:'Blank'}
+  {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'monthly', l:'Monthly calendar'}, {v:'blank', l:'Blank'}
 ];
 const SP_KEYS = ['dots','grid','lined','cornell','checklist'];
 
@@ -234,9 +234,10 @@ const DEFAULTS = {
   mt:12, mb:12, mi:14, mo:10, mirror:false,
   title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
-  spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false
+  spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false,
+  dated:false, startDate:'', monthCal:true, monthFill:true
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -261,6 +262,7 @@ function sanitize(s){
   s.sheetMargin = num(s.sheetMargin,5,0,30); s.gap = num(s.gap,0,0,30);
   s.pages = Math.round(num(s.pages,4,1,200));
   s.bleed = num(s.bleed,2,0.5,6);
+  s.startDate = /^\d{4}-\d{2}-\d{2}$/.test(s.startDate) && isFinite(Date.parse(s.startDate)) ? s.startDate : '';
   for(const k of BOOLS) s[k] = !!s[k];
   return s;
 }
@@ -333,6 +335,50 @@ function fit(a0, len, sp, anchor){
 }
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+/* Dated pages: daily, weekly and monthly pages can carry real dates. Dates are
+   whole days in UTC so they never shift with time zones or daylight saving. */
+const DATED_TPLS = ['daily','weekly','monthly'];
+const DAY_MS = 864e5;
+const isDated = s => !!s.dated && DATED_TPLS.includes(s.tpl);
+const hasMonthCal = s => isDated(s) && s.monthCal && s.tpl !== 'monthly';
+function startOf(s){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.startDate || '');
+  if(m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  const t = new Date(); return new Date(Date.UTC(t.getFullYear(), t.getMonth(), 1));
+}
+const addDays = (d,n) => new Date(d.getTime() + n*DAY_MS);
+const weekOf = (d,ws) => addDays(d, -((d.getUTCDay() - ws + 7) % 7));
+const monthEnd = d => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0));
+const dayLabel = d => DAYS[d.getUTCDay()]+', '+MONTHS[d.getUTCMonth()]+' '+d.getUTCDate();
+function weekLabel(a){
+  const b = addDays(a,6), ma = MONTHS[a.getUTCMonth()], mb = MONTHS[b.getUTCMonth()];
+  return ma === mb ? ma+' '+a.getUTCDate()+' to '+b.getUTCDate()
+                   : ma.slice(0,3)+' '+a.getUTCDate()+' to '+mb.slice(0,3)+' '+b.getUTCDate();
+}
+/* What page p shows: which template, and its date when dates are on. With a month
+   calendar first, page 1 is the calendar and the dated pages start on page 2. */
+function pageInfo(s,p){
+  if(!isDated(s)) return {tpl:s.tpl};
+  let tpl = s.tpl, i = p;
+  if(hasMonthCal(s)){ if(p === 1) tpl = 'monthly'; else i = p - 1; }
+  const st = startOf(s);
+  if(tpl === 'monthly'){
+    const m = new Date(Date.UTC(st.getUTCFullYear(), st.getUTCMonth() + (tpl === s.tpl ? i-1 : 0), 1));
+    return {tpl, month:m, label:MONTHS[m.getUTCMonth()]+' '+m.getUTCFullYear()};
+  }
+  if(tpl === 'daily'){ const d = addDays(st, i-1); return {tpl, day:d, label:dayLabel(d)}; }
+  const w = addDays(weekOf(st, s.weekStart), 7*(i-1));
+  return {tpl, week:w, label:weekLabel(w)};
+}
+/* Pages to print: the number asked for, or with dates on, through the end of the start month. */
+function pageCount(s){
+  if(!isDated(s) || !s.monthFill || s.tpl === 'monthly') return s.pages;
+  const st = startOf(s), end = monthEnd(st), cal = hasMonthCal(s) ? 1 : 0;
+  if(s.tpl === 'daily') return Math.round((end - st)/DAY_MS) + 1 + cal;
+  return Math.round((weekOf(end, s.weekStart) - weekOf(st, s.weekStart))/(7*DAY_MS)) + 1 + cal;
+}
 
 const TPL = {
   blank(){},
@@ -417,14 +463,14 @@ const TPL = {
     }
   },
 
-  weekly(s,B,C){
+  weekly(s,B,C,p,info){
     const order = [0,1,2,3,4,5,6].map(i => (s.weekStart + i) % 7);
     if(s.weekLayout === 'rows'){
       const rh = B.h/7;
       C.ops.push(L(B.x, B.y, B.x+B.w, B.y, C.lw, C.line));
       order.forEach((d,i) => {
         const y = B.y + i*rh;
-        C.ops.push(T(B.x+1, y+3.8, DAYS[d].toUpperCase(), 7, C.mute, 'l', true));
+        C.ops.push(T(B.x+1, y+3.8, DAYS[d].toUpperCase()+(info && info.week ? ' '+addDays(info.week,i).getUTCDate() : ''), 7, C.mute, 'l', true));
         C.ops.push(L(B.x, y+rh, B.x+B.w, y+rh, C.lw, C.line));
       });
     } else {
@@ -434,8 +480,31 @@ const TPL = {
         const c = k % cols, r = Math.floor(k/cols);
         const x = B.x + c*(bw+g), y = B.y + r*(bh+g);
         C.ops.push(RC(x, y, bw, bh, C.lw, C.line));
-        C.ops.push(T(x+2, y+4, k < 7 ? DAYS[order[k]].toUpperCase() : 'NOTES', 7, C.mute, 'l', true));
+        C.ops.push(T(x+2, y+4, k < 7 ? DAYS[order[k]].toUpperCase()+(info && info.week ? ' '+addDays(info.week,k).getUTCDate() : '') : 'NOTES', 7, C.mute, 'l', true));
       }
+    }
+  },
+
+  monthly(s,B,C,p,info){
+    const order = [0,1,2,3,4,5,6].map(i => (s.weekStart + i) % 7);
+    let y = B.y, first = 0, days = 0, rows = 5;
+    if(info && info.month){
+      days = monthEnd(info.month).getUTCDate();
+      first = (info.month.getUTCDay() - s.weekStart + 7) % 7;
+      rows = Math.ceil((first + days)/7);
+    } else {
+      C.ops.push(T(B.x, y+4.2, 'MONTH', 7, C.mute, 'l', true));
+      C.ops.push(L(B.x+12, y+4.6, B.x+Math.min(B.w, 70), y+4.6, C.lw, C.line));
+      y += 8;
+    }
+    const cw = B.w/7, hh = 5.5, rh = Math.max(4, (B.y + B.h - y - hh)/rows);
+    order.forEach((d,i) => C.ops.push(T(B.x + i*cw + cw/2, y+3.8, cw < 10 ? DAYS[d].slice(0,1) : DAYS[d].slice(0,3).toUpperCase(), 7, C.mute, 'c', true)));
+    const top = y + hh, bot = top + rows*rh;
+    for(let r=0;r<=rows;r++) C.ops.push(L(B.x, top + r*rh, B.x+B.w, top + r*rh, C.lw, C.line));
+    for(let c=0;c<=7;c++) C.ops.push(L(B.x + c*cw, top, B.x + c*cw, bot, C.lw, C.line));
+    for(let d=1; d<=days; d++){
+      const k = first + d - 1, c = k % 7, r = Math.floor(k/7);
+      C.ops.push(T(B.x + c*cw + 1.2, top + r*rh + 3.4, String(d), 7, C.mute));
     }
   }
 };
@@ -451,11 +520,16 @@ function buildPage(s,p,opt){
     ink: darken(s.color, 0.55)
   };
   let B = {x:R.x, y:R.y, w:R.w, h:R.h};
-  const title = s.title.trim();
-  if(title || s.dateField){
+  const title = s.title.trim(), info = pageInfo(s,p), head = info.label || '';
+  const band = !!(title || s.dateField || head);
+  if(band){
     const hh = Math.max(9, s.titleSize*PT*1.9 + 2), base = R.y + hh - 3.2;
-    if(title) ops.push(T(R.x, base, title, s.titleSize, C.ink, 'l', true));
-    if(s.dateField){
+    if(head){
+      // A dated page leads with its date; a page title moves to the right in small type.
+      ops.push(T(R.x, base, head, s.titleSize, C.ink, 'l', true));
+      if(title) ops.push(T(R.x+R.w, base, title, 8, C.mute, 'r'));
+    } else if(title) ops.push(T(R.x, base, title, s.titleSize, C.ink, 'l', true));
+    if(s.dateField && !head){
       ops.push(T(R.x+R.w-34, base, 'Date', 8, C.ink));
       ops.push(L(R.x+R.w-27, base+0.5, R.x+R.w, base+0.5, C.lw, C.line));
     }
@@ -469,13 +543,13 @@ function buildPage(s,p,opt){
     const sd = opt.sides || {}, out = k => sd[k] === false ? 0 : bl;
     const spineLeft = !!opt.spread && R.innerLeft, spineRight = !!opt.spread && !R.innerLeft;
     const x1 = spineLeft ? B.x : -out('l'), x2 = spineRight ? B.x + B.w : s.w + out('r');
-    const y1 = (title || s.dateField) ? B.y : -out('t');
+    const y1 = band ? B.y : -out('t');
     B = {x:x1, y:y1, w:x2-x1, h:s.h + out('b') - y1};
     if(sd.l === false) C.ax = 0; else if(sd.r === false) C.ax = s.w;
     if(sd.t === false) C.ay = 0; else if(sd.b === false) C.ay = s.h;
     C.marginX = R.x + Math.min(20, R.w*0.15);
   }
-  TPL[s.tpl](s,B,C,p);
+  TPL[info.tpl](s,B,C,p,info);
   if(s.pageNums !== 'none'){
     const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
     const n = String(s.startNum + p - 1);
@@ -534,13 +608,13 @@ function plan(s){
   let total, sheets, booklet = null;
   if(isBooklet(s)){
     // Pages round up to a multiple of 4 (one folded sheet each), or up to full paper sheets.
-    let folios = Math.ceil(s.pages/4);
+    let folios = Math.ceil(pageCount(s)/4);
     const paper = Math.ceil(folios/per);
     if(s.fill) folios = paper*per;
     booklet = {pages:4*folios, folios, paper};
     total = 2*folios; sheets = 2*paper;
   } else {
-    const want = s.spread ? Math.ceil(s.pages/2) : s.pages;
+    const want = s.spread ? Math.ceil(pageCount(s)/2) : pageCount(s);
     total = s.fill ? Math.ceil(want/per)*per : want;
     sheets = Math.ceil(total/per);
   }
@@ -673,7 +747,7 @@ async function makePDF(s,onProgress){
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount};
 }
 if(typeof document === 'undefined') return;
 
@@ -766,8 +840,13 @@ const SECTIONS = [
     {id:'hour24', t:'check', label:'24-hour labels', key:'hour24', show:s=>s.tpl==='daily'},
     {id:'priorities', t:'check', label:'Top priorities box', key:'priorities', show:s=>s.tpl==='daily'},
     {id:'dailyNotes', t:'check', label:'Notes column', key:'dailyNotes', show:s=>s.tpl==='daily'},
-    {id:'weekStart', t:'select', label:'Week starts on', opts:[['1','Monday'],['0','Sunday']], key:'weekStart', numeric:true, show:s=>s.tpl==='weekly'},
-    {id:'weekLayout', t:'select', label:'Weekly layout', opts:[['grid','Boxes (7 days + notes)'],['rows','Stacked rows']], key:'weekLayout', show:s=>s.tpl==='weekly'}
+    {id:'weekStart', t:'select', label:'Week starts on', opts:[['1','Monday'],['0','Sunday']], key:'weekStart', numeric:true, show:s=>s.tpl==='weekly'||s.tpl==='monthly'||hasMonthCal(s)},
+    {id:'weekLayout', t:'select', label:'Weekly layout', opts:[['grid','Boxes (7 days + notes)'],['rows','Stacked rows']], key:'weekLayout', show:s=>s.tpl==='weekly'},
+    {id:'dated', t:'check', label:'Fill in real dates', key:'dated', show:s=>DATED_TPLS.includes(s.tpl)},
+    {id:'startDate', t:'date', label:s=>s.tpl==='monthly'?'First month':'Start date', key:'startDate', show:isDated},
+    {id:'monthCal', t:'check', label:'Start with a month calendar page', key:'monthCal', show:s=>isDated(s)&&s.tpl!=='monthly'},
+    {id:'monthFill', t:'check', label:'Print through the end of the month', key:'monthFill', show:s=>isDated(s)&&s.tpl!=='monthly'},
+    {id:'datedHint', t:'hint', text:datedHint, show:isDated}
   ]},
   {t:'Margins', c:[
     {id:'mt', t:'len', label:'Top', key:'mt', min:0, max:60},
@@ -790,7 +869,7 @@ const SECTIONS = [
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
     {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},
     {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30, show:s=>!s.shareCuts},
-    {id:'pages', t:'num', label:s=>isBooklet(s)?'Booklet pages (rounds up to a multiple of 4)':s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'pages', t:'num', show:s=>pageCount(s)===s.pages, label:s=>isBooklet(s)?'Booklet pages (rounds up to a multiple of 4)':isDated(s)&&s.tpl==='monthly'?'Months to print':s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
     {id:'bookletHint', t:'hint', text:bookletHint, show:isBooklet},
     {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
     {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
@@ -801,6 +880,18 @@ const SECTIONS = [
   ]}
 ];
 
+function datedHint(s){
+  if(!isDated(s)) return '';
+  const n = pageCount(s), cal = hasMonthCal(s);
+  const a = pageInfo(s, cal ? 2 : 1), b = pageInfo(s, n);
+  const name = i => i.week ? MONTHS[i.week.getUTCMonth()]+' '+i.week.getUTCDate() : i.label;
+  const range = n > (cal ? 1 : 0)
+    ? (a.week ? (a.label === b.label ? 'the week of '+name(a) : 'weeks starting '+name(a)+' to '+name(b))
+              : a.label === b.label ? a.label : a.label+' to '+b.label) : '';
+  const lead = s.startDate ? '' : 'No start date set, so it uses the current month. ';
+  return lead+(cal ? 'Page 1 is the '+pageInfo(s,1).label+' calendar'+(range ? ', then ' : '.') : '')
+    +(range ? range+'.' : '')+' '+n+' page'+(n === 1 ? '' : 's')+'.';
+}
 function bookletHint(s){
   const pl = plan(s), B = pl.booklet;
   if(!B) return '';
@@ -867,7 +958,7 @@ function makeField(c){
       inp.addEventListener('input', () => apply(false));
       inp.addEventListener('change', () => apply(true));
       wrap.append(lab, el('div', {class:'inwrap'}, inp, u));
-      F.sync = () => { if(document.activeElement !== inp) inp.value = disp(read(c)); u.textContent = S.unit; if(lab) lab.textContent = labText(); };
+      F.sync = () => { const v = read(c); if(document.activeElement !== inp) inp.value = v == null ? '' : disp(v); u.textContent = S.unit; if(lab) lab.textContent = labText(); };
       break;
     }
     case 'num': {
@@ -898,6 +989,14 @@ function makeField(c){
       inp.addEventListener('input', () => { write(c, inp.value); commit(c); });
       wrap.append(lab, inp);
       F.sync = () => { if(document.activeElement !== inp) inp.value = read(c); };
+      break;
+    }
+    case 'date': {
+      const inp = el('input', {id, type:'date'});
+      const on = () => { write(c, inp.value); commit(c); };
+      inp.addEventListener('change', on); inp.addEventListener('input', on);
+      wrap.append(lab, inp);
+      F.sync = () => { if(document.activeElement !== inp) inp.value = read(c) || ''; };
       break;
     }
     case 'check': {

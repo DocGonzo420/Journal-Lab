@@ -236,9 +236,10 @@ const DEFAULTS = {
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
   spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false,
   dated:false, startDate:'', monthCal:true, monthFill:true,
-  holes:'none', holeEdge:7
+  holes:'none', holeEdge:7,
+  duplex:false, calFL:20, calFT:20, calBL:20, calBT:20
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill','duplex'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -264,6 +265,7 @@ function sanitize(s){
   s.pages = Math.round(num(s.pages,4,1,200));
   s.bleed = num(s.bleed,2,0.5,6);
   if(!HOLES[s.holes]) s.holes = 'none'; s.holeEdge = num(s.holeEdge,7,4,15);
+  for(const k of CAL_KEYS) s[k] = num(s[k],CAL_REF,CAL_REF-10,CAL_REF+10);
   s.startDate = /^\d{4}-\d{2}-\d{2}$/.test(s.startDate) && isFinite(Date.parse(s.startDate)) ? s.startDate : '';
   for(const k of BOOLS) s[k] = !!s[k];
   return s;
@@ -310,6 +312,59 @@ const dotRadius = w => 0.1 + w*0.32;
 /* Bleed: dot grid, square grid and ruled patterns can fill the page and run
    past its edges, so a slightly-off cut still looks clean. */
 const BLEED_TPLS = ['dots','grid','lined'];
+/* Printer calibration. The test sheet prints a line 20 mm from the left and top
+   edges on each side of the paper; the distances measured with a ruler say how far
+   the printer shifts each side, and the PDF shifts the other way to cancel it. */
+const CAL_REF = 20, CAL_KEYS = ['calFL','calFT','calBL','calBT'];
+const isBackFace = (s,pl,idx) => (!!pl.booklet || !!s.duplex) && idx % 2 === 0;
+function calShift(s,back){
+  return back ? {x:CAL_REF - s.calBL, y:CAL_REF - s.calBT} : {x:CAL_REF - s.calFL, y:CAL_REF - s.calFT};
+}
+const calOn = s => CAL_KEYS.some(k => Math.abs(s[k] - CAL_REF) > 1e-9);
+/* One side of the printer test sheet, paper size w x h. */
+function buildTestSheet(w,h,back,paperName){
+  const ops = [], ink = '#222222', mute = '#666666', lw = 0.2, R = CAL_REF;
+  const side = back ? 'BACK' : 'FRONT';
+  // Margin ladders: lines 1 to 10 mm in from each edge, centred on that edge.
+  for(let d=1; d<=10; d++){
+    const big = d % 5 === 0, len = big ? 10 : 6;
+    ops.push(L(w/2-len/2, d, w/2+len/2, d, lw, ink), L(w/2-len/2, h-d, w/2+len/2, h-d, lw, ink));
+    ops.push(L(d, h/2-len/2, d, h/2+len/2, lw, ink), L(w-d, h/2-len/2, w-d, h/2+len/2, lw, ink));
+    if(d === 1 || big){
+      ops.push(T(w/2-len/2-1.5, d+0.7, String(d), 5, mute, 'r'), T(w/2-len/2-1.5, h-d+0.7, String(d), 5, mute, 'r'));
+      ops.push(T(d, h/2-len/2-1.5, String(d), 5, mute, 'c'), T(w-d, h/2-len/2-1.5, String(d), 5, mute, 'c'));
+    }
+  }
+  // Reference lines 20 mm from the left and top edges.
+  ops.push(L(R, 40, R, h-40, 0.25, ink), L(40, R, w-40, R, 0.25, ink));
+  ops.push(T(R+2, 46, 'This line should be 20 mm from the left edge', 7, ink));
+  ops.push(T(46, R-2, 'This line should be 20 mm from the top edge', 7, ink));
+  // Centre cross, to check front and back line up when held to the light.
+  ops.push(L(w/2-15, h/2, w/2+15, h/2, 0.25, ink), L(w/2, h/2-15, w/2, h/2+15, 0.25, ink), O(w/2, h/2, 5, 0.25, ink));
+  // 100 mm scale bar, to check the print was not scaled.
+  const sx = w/2-50, sy = h/2+40;
+  ops.push(L(sx, sy, sx+100, sy, 0.3, ink));
+  for(let i=0;i<=10;i++) ops.push(L(sx+10*i, sy-(i%5 ? 1.5 : 3), sx+10*i, sy, 0.2, ink));
+  ops.push(T(w/2, sy+5, 'This bar should be exactly 100 mm long. If not, print at 100% (Actual size).', 7, ink, 'c'));
+  // Instructions.
+  const tx = 46, ty = h/2-48;
+  ops.push(T(tx, ty, 'Journal Lab printer test: '+side, 12, ink, 'l', true));
+  const lines = back ? [
+    'This is the back of the sheet. Hold the sheet to a light: the two centre',
+    'crosses should sit on top of each other.',
+    'Measure the two lines on this side from the paper edges, as you read this',
+    'page, and enter them as the back measurements.'
+  ] : [
+    paperName+'. Print both pages double-sided at 100%, flipping on the',
+    (w > h ? 'short' : 'long')+' edge. Use the same printer settings as your journal pages.',
+    'Margins: the ladders at each edge have lines 1 to 10 mm in. The smallest',
+    'number you can see fully is the most your printer cuts off on that side.',
+    'Measure the two 20 mm lines with a ruler and enter them in Journal Lab.'
+  ];
+  lines.forEach((t,i) => ops.push(T(tx, ty+7+i*4.2, t, 7.5, mute)));
+  return ops;
+}
+
 /* Ring holes for loose-leaf planners. gaps are the distances between hole centres
    (mm), centred on the binding edge; r is the hole radius. Disc-bound punches set
    their own spacing, so that option only keeps the punch zone clear. */
@@ -710,6 +765,10 @@ function buildSheet(s,pl,idx,preview,guides){
       ys.forEach(y => { ops.push(L(pl.ox-o-len, y, pl.ox-o, y, mw, mc)); ops.push(L(pl.ox+pl.tw+o, y, pl.ox+pl.tw+o+len, y, mw, mc)); });
     }
   }
+  if(!preview && calOn(s)){
+    const d = calShift(s, isBackFace(s,pl,idx));
+    if(d.x || d.y){ const out = []; place(ops, d.x, d.y, 1, out); return out; }
+  }
   return ops;
 }
 
@@ -792,9 +851,21 @@ async function makePDF(s,onProgress){
   return doc;
 }
 
+function makeTestPDF(s){
+  const pl = plan(s), P = PAPERS[s.paper], JS = window.jspdf.jsPDF;
+  const fmt = [P.w, P.h], ori = pl.landscape ? 'landscape' : 'portrait';
+  const doc = new JS({unit:'mm', format:fmt, orientation:ori, compress:true});
+  doc.setProperties({title:'Printer test', creator:'Journal Lab'});
+  const name = P.l+' '+ori;
+  drawOps(doc, buildTestSheet(pl.sw, pl.sh, false, name));
+  doc.addPage(fmt, ori);
+  drawOps(doc, buildTestSheet(pl.sw, pl.sh, true, name));
+  return doc;
+}
+
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift};
 }
 if(typeof document === 'undefined') return;
 
@@ -930,8 +1001,30 @@ const SECTIONS = [
     {id:'cutMarks', t:'check', label:'Cut marks in the margin', key:'cutMarks'},
     {id:'fill', t:'check', label:'Fill every sheet (add extra pages to complete the last sheet)', key:'fill'},
     {id:'printHint', t:'hint', text:'Print the PDF at 100% or Actual size. Fit to page rescales the pages and they will no longer match the size you chose.'}
+  ]},
+  {t:'Printer calibration', c:[
+    {id:'calTest', t:'button', label:'Download printer test sheet', run:() => exportTest()},
+    {id:'calHint', t:'hint', text:s=>'Print the test sheet double-sided on the paper and orientation set above ('+PAPERS[s.paper].l+', '+(plan(s).landscape ? 'landscape' : 'portrait')+'). Set Printer margin to the largest margin the ladders show. Then measure the 20 mm lines and enter what you get below. Leave a field at 20 if that side printed true.'},
+    {id:'calFL', t:'len', label:'Front: left line', key:'calFL', min:10, max:30},
+    {id:'calFT', t:'len', label:'Front: top line', key:'calFT', min:10, max:30},
+    {id:'calBL', t:'len', label:'Back: left line', key:'calBL', min:10, max:30},
+    {id:'calBT', t:'len', label:'Back: top line', key:'calBT', min:10, max:30},
+    {id:'duplex', t:'check', label:'I print these pages double-sided (every second sheet is a back)', key:'duplex', show:s=>!isBooklet(s)},
+    {id:'calState', t:'hint', text:calHint}
   ]}
 ];
+function calHint(s){
+  if(!calOn(s)) return 'No correction yet. Pages print where the PDF puts them.';
+  const f = calShift(s,false), b = calShift(s,true), mv = d => {
+    const p = [];
+    if(Math.abs(d.x) > 1e-9) p.push(fmtLen(Math.abs(d.x))+' '+S.unit+(d.x > 0 ? ' right' : ' left'));
+    if(Math.abs(d.y) > 1e-9) p.push(fmtLen(Math.abs(d.y))+' '+S.unit+(d.y > 0 ? ' down' : ' up'));
+    return p.length ? p.join(' and ') : 'not at all';
+  };
+  const backs = isBooklet(s) || s.duplex;
+  return 'The PDF moves fronts '+mv(f)+(backs ? ' and backs '+mv(b) : '')+' to cancel your printer\'s shift. The preview stays centred.'
+    +(backs ? '' : ' Back corrections apply only to booklets, or when the double-sided box is ticked.');
+}
 
 function holesHint(s){
   const H = holesOf(s); if(!H) return '';
@@ -1079,6 +1172,11 @@ function makeField(c){
       F.sync = () => { const v = read(c).toLowerCase(); sws.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === v))); pick.value = v; };
       break;
     }
+    case 'button': {
+      wrap.append(el('button', {type:'button', id, class:'btn small', onclick:c.run}, c.label));
+      F.sync = () => {};
+      break;
+    }
     case 'hint': {
       const txt = () => typeof c.text === 'function' ? c.text(S) : c.text;
       const p = el('p', {class:'hint'}, txt());
@@ -1115,7 +1213,8 @@ const STARTERS = [
   {n:'Pocket grid', p:{w:88.9,h:139.7,preset:'fn',tpl:'grid',mt:8,mb:8,mi:8,mo:8,pages:1}}
 ];
 function loadSettings(o,keepSheet){
-  const keep = keepSheet ? {unit:S.unit, paper:S.paper} : {};
+  const keep = keepSheet ? {unit:S.unit, paper:S.paper, sheetMargin:S.sheetMargin, duplex:S.duplex} : {};
+  if(keepSheet) for(const k of CAL_KEYS) keep[k] = S[k];
   S = merge(Object.assign({}, o, keep));
   V.page = 1; V.sheet = 1;
   syncAll(); vis(); update();
@@ -1280,6 +1379,11 @@ async function shareFile(file){
 function pdfName(){
   const base = S.preset !== 'custom' ? S.preset : Math.round(S.w)+'x'+Math.round(S.h)+'mm';
   return 'journal-'+base+'-'+S.tpl+(isBooklet(S) ? '-booklet' : S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
+}
+async function exportTest(){
+  if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }
+  try{ await saveFile('journal-lab-printer-test-'+S.paper+'.pdf', makeTestPDF(S).output('blob')); }
+  catch(e){ console.error(e); toast('Could not build the test sheet: '+((e && e.message) || e)); }
 }
 async function exportPDF(){
   if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }

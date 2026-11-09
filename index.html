@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Printable Journal Generator</title>
+<title>Journal Lab</title>
 <meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Journal Pages">
+<meta name="apple-mobile-web-app-title" content="Journal Lab">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -138,7 +138,7 @@ input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule
 <div class="app">
   <header class="top">
     <div class="titlerow">
-      <h1>Printable Journal Generator</h1>
+      <h1>Journal Lab</h1>
       <button type="button" class="btn small" id="btnInstall" hidden>Install app</button>
     </div>
     <p class="sub" id="subline">any page size · print on Letter or A4</p>
@@ -661,7 +661,7 @@ async function makePDF(s,onProgress){
   const pl = plan(s), JS = window.jspdf.jsPDF;
   const fmt = [Math.min(pl.sw,pl.sh), Math.max(pl.sw,pl.sh)], ori = pl.landscape ? 'landscape' : 'portrait';
   const doc = new JS({unit:'mm', format:fmt, orientation:ori, compress:true});
-  doc.setProperties({title:'Journal pages', creator:'Printable Journal Generator'});
+  doc.setProperties({title:'Journal pages', creator:'Journal Lab'});
   for(let i=1;i<=pl.sheets;i++){
     if(i > 1) doc.addPage(fmt, ori);
     drawOps(doc, buildSheet(s,pl,i,false,false));

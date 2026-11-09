@@ -1,6 +1,6 @@
 {
-  "name": "Printable Journal Generator",
-  "short_name": "Journal Pages",
+  "name": "Journal Lab",
+  "short_name": "Journal Lab",
   "description": "Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.",
   "id": "./",
   "start_url": "./",

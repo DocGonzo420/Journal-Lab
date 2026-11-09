@@ -4,13 +4,16 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 
 **Open the app:** https://docgonzo420.github.io/Journal-Lab/
 
-- **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, monthly calendar, blank
+- **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, monthly calendar, habit tracker, mood tracker, reading log, dated log, blank
 - **Sizes:** A4, A5 (Hobonichi Cousin), A6, B5, B6, US Letter, Half Letter, Junior Legal, Quarter Letter, Field Notes, Passport Travelers Notebook (89 × 124 mm), pocket and large notebooks, or any custom size
 - **Printing:** as many pages as fit on each sheet, with cut marks, mirrored margins for double-sided books, titles, date lines and page numbers
 - **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine, or butt pages together so neighbours share cut lines (fewer cuts)
 - **Booklets:** print spreads double-sided in saddle-stitch order, so the stack folds and staples into one booklet with the pages in reading order
 - **Dated pages:** fill a month of daily or weekly pages with real dates, with a month calendar page first, or print monthly calendars
 - **Ring holes:** punch marks for A5, Personal and Pocket six-ring planners, or a clear punch zone for disc-bound planners, with the page content kept away from the holes
+- **Habit and mood trackers:** a month of habits with a box for each day, or a row per day to rate your mood from 1 to 5, with real dates if you like
+- **Headers:** header text, small text on the right, and page numbers in the header or footer; type {n} anywhere in the header to print the page number there
+- **Mixed pages:** build one PDF from several page types in order, such as a month calendar, a week of daily pages and a few dot grid pages; dated parts carry on from each other
 - **Printer calibration:** a two-sided test sheet shows how much your printer cuts off at each edge and how far it shifts the front and back; enter the measurements and every PDF corrects for them
 - **Share links:** send a link that opens Journal Lab with your exact page setup; your printer margin and calibration stay on your device
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection

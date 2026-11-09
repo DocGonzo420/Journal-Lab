@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Printable Journal Generator</title>
+<title>Journal Lab</title>
 <meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Journal Pages">
+<meta name="apple-mobile-web-app-title" content="Journal Lab">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -138,7 +138,7 @@ input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule
 <div class="app">
   <header class="top">
     <div class="titlerow">
-      <h1>Printable Journal Generator</h1>
+      <h1>Journal Lab</h1>
       <button type="button" class="btn small" id="btnInstall" hidden>Install app</button>
     </div>
     <p class="sub" id="subline">any page size · print on Letter or A4</p>
@@ -234,9 +234,9 @@ const DEFAULTS = {
   mt:12, mb:12, mi:14, mo:10, mirror:false,
   title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
-  spread:false, bleedOn:false, bleed:2, shareCuts:false
+  spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','bleedOn','shareCuts'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -308,6 +308,14 @@ const BLEED_TPLS = ['dots','grid','lined'];
 const bleedOf = s => s.bleedOn && BLEED_TPLS.includes(s.tpl) ? s.bleed : 0;
 /* Booklet spreads: two pages side by side, folded at the spine. */
 const pieceW = s => s.spread ? 2*s.w : s.w;
+/* Saddle-stitch booklet: spreads printed on both sides of the paper, in the
+   order that lets the stack fold into one booklet. Folded sheet f (0 = outside)
+   carries pages N-2f and 2f+1 on its front, 2f+2 and N-2f-1 on its back. */
+const isBooklet = s => !!(s.spread && s.booklet);
+function bookletSide(k, n){
+  const f = Math.floor((k-1)/2);
+  return (k-1) % 2 === 0 ? [n-2*f, 2*f+1] : [2*f+2, n-2*f-1];
+}
 
 function contentRect(s,p,inner){
   const innerLeft = inner ? inner === 'left' : (!s.mirror || (p % 2 === 1));
@@ -486,10 +494,14 @@ function buildPage(s,p,opt){
 function buildPiece(s,k,opt){
   opt = opt || {};
   if(!s.spread) return buildPage(s,k,opt);
+  if(isBooklet(s)){ const [lp, rp] = bookletSide(k, opt.bn || plan(s).bpages); return buildPair(s, lp, rp, opt); }
+  return buildPair(s, 2*k-1, 2*k, opt);
+}
+function buildPair(s,lp,rp,opt){
   const ops = [], bl = bleedOf(s), sd = opt.sides || {};
   const half = side => Object.assign({}, opt, {inner:side, spread:true, sides:Object.assign({}, sd, side === 'right' ? {r:true} : {l:true})});
-  place(buildPage(s, 2*k-1, half('right')), 0, 0, 1, ops);
-  place(buildPage(s, 2*k, half('left')), s.w, 0, 1, ops);
+  place(buildPage(s, lp, half('right')), 0, 0, 1, ops);
+  place(buildPage(s, rp, half('left')), s.w, 0, 1, ops);
   const tt = clamp(s.mt*0.4, 2, 4), tb = clamp(s.mb*0.4, 2, 4);
   ops.push(L(s.w, sd.t === false ? 0 : -bl, s.w, tt, 0.25, '#555555'));
   ops.push(L(s.w, s.h - tb, s.w, s.h + (sd.b === false ? 0 : bl), 0.25, '#555555'));
@@ -519,15 +531,26 @@ function plan(s){
   let cols = pick.cols, rows = pick.rows, sc = 1, scaled = false;
   if(cols < 1 || rows < 1){ cols = 1; rows = 1; sc = Math.max(0.05, pick.sc); scaled = true; }
   const per = cols*rows;
-  const want = s.spread ? Math.ceil(s.pages/2) : s.pages;
-  const total = s.fill ? Math.ceil(want/per)*per : want;
-  const sheets = Math.ceil(total/per);
+  let total, sheets, booklet = null;
+  if(isBooklet(s)){
+    // Pages round up to a multiple of 4 (one folded sheet each), or up to full paper sheets.
+    let folios = Math.ceil(s.pages/4);
+    const paper = Math.ceil(folios/per);
+    if(s.fill) folios = paper*per;
+    booklet = {pages:4*folios, folios, paper};
+    total = 2*folios; sheets = 2*paper;
+  } else {
+    const want = s.spread ? Math.ceil(s.pages/2) : s.pages;
+    total = s.fill ? Math.ceil(want/per)*per : want;
+    sheets = Math.ceil(total/per);
+  }
   const pageW = pw*sc, pageH = ph*sc;
   const tw = cols*pageW + (cols-1)*g, th = rows*pageH + (rows-1)*g;
   // Straight cuts to free every page: shared lines count once, gaps need two cuts each.
   const cuts = g > 0 ? 2*cols + 2*rows : cols + rows + 2;
   return {sw:pick.sw, sh:pick.sh, cols, rows, per, sc, scaled, total, sheets, pageW, pageH, tw, th,
-          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl, cuts};
+          ox:(pick.sw-tw)/2, oy:(pick.sh-th)/2, paper:P.l, landscape:pick.sw > pick.sh, gap:g, bleed:bl, cuts,
+          booklet, bpages:booklet ? booklet.pages : 0};
 }
 
 function place(ops,tx,ty,sc,out){
@@ -542,15 +565,20 @@ function place(ops,tx,ty,sc,out){
 }
 
 function buildSheet(s,pl,idx,preview,guides){
-  const ops = [], start = (idx-1)*pl.per;
+  const ops = [], start = (idx-1)*pl.per, B = pl.booklet;
+  // In a booklet, sheet j front and back are faces 2j-1 and 2j. Slot i holds folded
+  // sheet i*paper + j, so each cut pile is a run of nested sheets. The back is mirrored
+  // left to right so each spread lands behind its own front.
+  const j = B ? Math.ceil(idx/2) - 1 : 0, back = !!B && idx % 2 === 0;
   for(let i=0;i<pl.per;i++){
-    const p = start + i + 1;
-    if(p > pl.total) break;
-    const c = i % pl.cols, r = Math.floor(i/pl.cols);
+    let p = start + i + 1;
+    if(B){ const f = i*B.paper + j; if(f >= B.folios) continue; p = 2*f + (back ? 2 : 1); }
+    else if(p > pl.total) break;
+    const c0 = i % pl.cols, c = back ? pl.cols - 1 - c0 : c0, r = Math.floor(i/pl.cols);
     const tx = pl.ox + c*(pl.pageW + pl.gap), ty = pl.oy + r*(pl.pageH + pl.gap);
     const share = pl.gap === 0;
     const sides = {l:!share || c === 0, r:!share || c === pl.cols-1, t:!share || r === 0, b:!share || r === pl.rows-1};
-    place(buildPiece(s,p,{guides, sides}), tx, ty, pl.sc, ops);
+    place(buildPiece(s,p,{guides, sides, bn:pl.bpages}), tx, ty, pl.sc, ops);
     if(preview) ops.push(RC(tx, ty, pl.pageW, pl.pageH, 0.2, '#9aa4b5', [1.5,1.5]));
   }
   if(s.cutMarks && !preview){
@@ -633,7 +661,7 @@ async function makePDF(s,onProgress){
   const pl = plan(s), JS = window.jspdf.jsPDF;
   const fmt = [Math.min(pl.sw,pl.sh), Math.max(pl.sw,pl.sh)], ori = pl.landscape ? 'landscape' : 'portrait';
   const doc = new JS({unit:'mm', format:fmt, orientation:ori, compress:true});
-  doc.setProperties({title:'Journal pages', creator:'Printable Journal Generator'});
+  doc.setProperties({title:'Journal pages', creator:'Journal Lab'});
   for(let i=1;i<=pl.sheets;i++){
     if(i > 1) doc.addPage(fmt, ori);
     drawOps(doc, buildSheet(s,pl,i,false,false));
@@ -645,7 +673,7 @@ async function makePDF(s,onProgress){
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide};
 }
 if(typeof document === 'undefined') return;
 
@@ -715,6 +743,7 @@ const SECTIONS = [
     {id:'h', t:'len', label:'Height', key:'h', min:20, max:600, after:matchPreset},
     {id:'unit', t:'seg', label:'Units', opts:[['mm','Millimetres'],['in','Inches']], key:'unit'},
     {id:'spread', t:'check', label:'Booklet spreads: two pages side by side, with fold marks', key:'spread'},
+    {id:'booklet', t:'check', label:'Saddle-stitch booklet: print double-sided, fold the stack and staple', key:'booklet', show:s=>s.spread},
     {id:'spreadHint', t:'hint', text:s=>'Each spread is '+fmtLen(2*s.w)+' × '+fmtLen(s.h)+' '+s.unit+'. Fold it in half at the small ticks at the top and bottom. Each page keeps its inner margin beside the fold.', show:s=>s.spread}
   ]},
   {t:'Page style', open:true, c:[
@@ -761,7 +790,8 @@ const SECTIONS = [
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
     {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},
     {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30, show:s=>!s.shareCuts},
-    {id:'pages', t:'num', label:s=>s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'pages', t:'num', label:s=>isBooklet(s)?'Booklet pages (rounds up to a multiple of 4)':s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'bookletHint', t:'hint', text:bookletHint, show:isBooklet},
     {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
     {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
     {id:'bleedHint', t:'hint', text:s=>s.shareCuts ? 'The pattern fills each page and runs past the outside of the block, so a cut that is slightly off still looks clean. Inside the block, neighbouring pages meet at a shared cut line. The cut marks show the true page edges.' : 'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
@@ -771,6 +801,16 @@ const SECTIONS = [
   ]}
 ];
 
+function bookletHint(s){
+  const pl = plan(s), B = pl.booklet;
+  if(!B) return '';
+  const flip = pl.landscape ? 'short' : 'long';
+  const piles = pl.per > 1
+    ? 'Cut the stack at the cut marks, keeping each pile in printed order with sheet 1 on the outside. Nest the piles in reading order, the top-left pile outermost. '
+    : 'Keep the sheets in printed order with sheet 1 on the outside. ';
+  return 'Print double-sided, flipping on the '+flip+' edge. '+piles+'Fold at the ticks and staple along the fold. '
+    +B.pages+' pages on '+B.folios+' folded sheet'+(B.folios === 1 ? '' : 's')+'. Print one sheet first to check the two sides line up.';
+}
 const read = c => c.get ? c.get(S) : S[c.key];
 const write = (c,v) => { if(c.set) c.set(S,v); else S[c.key] = v; };
 const FIELDS = [];
@@ -991,12 +1031,15 @@ function render(){
   const pl = plan(S);
   V.page = clamp(V.page, 1, pl.total); V.sheet = clamp(V.sheet, 1, pl.sheets);
   let svg, w, h;
-  if(V.mode === 'page'){ w = pieceW(S); h = S.h; svg = toSVG(buildPiece(S, V.page, {guides:V.guides}), w, h); }
+  if(V.mode === 'page'){ w = pieceW(S); h = S.h; svg = toSVG(buildPiece(S, V.page, {guides:V.guides, bn:pl.bpages}), w, h); }
   else { w = pl.sw; h = pl.sh; svg = toSVG(buildSheet(S, pl, V.sheet, true, V.guides), w, h); }
   $('#stage').innerHTML = svg; cur = {w,h}; fitStage();
 
   const n = V.mode === 'page' ? pl.total : pl.sheets, i = V.mode === 'page' ? V.page : V.sheet;
-  $('#pagerLbl').textContent = (V.mode === 'page' ? (S.spread ? 'Spread ' : 'Page ') : 'Sheet ')+i+' / '+n;
+  const B = pl.booklet;
+  $('#pagerLbl').textContent = B && V.mode === 'sheet'
+    ? 'Sheet '+Math.ceil(i/2)+(i % 2 ? ' front' : ' back')+' / '+B.paper
+    : (V.mode === 'page' ? (S.spread ? 'Spread ' : 'Page ') : 'Sheet ')+i+' / '+n;
   $('#prev').disabled = i <= 1; $('#next').disabled = i >= n;
   $('#mPage').setAttribute('aria-pressed', String(V.mode === 'page'));
   $('#mSheet').setAttribute('aria-pressed', String(V.mode === 'sheet'));
@@ -1006,8 +1049,9 @@ function render(){
   const unitName = S.spread ? 'spread' : 'page';
   const lay = pl.paper+' '+(pl.landscape ? 'landscape' : 'portrait')+' · '+pl.per+' '+unitName+(pl.per === 1 ? '' : 's')+' per sheet'+(pl.per > 1 ? ' ('+pl.cols+'×'+pl.rows+')' : '')
     +(pl.bleed ? ' · '+fmtLen(pl.bleed)+' '+S.unit+' bleed'+(pl.gap ? ', '+fmtLen(pl.gap)+' '+S.unit+' gap' : '') : '')+' · '+pl.cuts+' cuts';
-  const count = pl.total+' '+unitName+(pl.total === 1 ? '' : 's')+(S.spread ? ' ('+pl.total*2+' pages)' : '');
-  $('#info').textContent = size+(S.spread ? ' · spreads '+fmtLen(2*S.w)+' × '+fmtLen(S.h) : '')+'  |  '+lay+'  |  '+count+' on '+pl.sheets+' sheet'+(pl.sheets === 1 ? '' : 's');
+  const count = B ? B.pages+'-page booklet' : pl.total+' '+unitName+(pl.total === 1 ? '' : 's')+(S.spread ? ' ('+pl.total*2+' pages)' : '');
+  const nSheets = B ? B.paper : pl.sheets;
+  $('#info').textContent = size+(S.spread ? ' · spreads '+fmtLen(2*S.w)+' × '+fmtLen(S.h) : '')+'  |  '+lay+'  |  '+count+' on '+nSheets+' sheet'+(nSheets === 1 ? '' : 's')+(B ? ', both sides' : '');
   const note = $('#note');
   if(pl.scaled){ note.hidden = false; note.textContent = 'This '+(S.spread ? 'spread' : 'page')+' is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
   else note.hidden = true;
@@ -1074,7 +1118,7 @@ async function shareFile(file){
 }
 function pdfName(){
   const base = S.preset !== 'custom' ? S.preset : Math.round(S.w)+'x'+Math.round(S.h)+'mm';
-  return 'journal-'+base+'-'+S.tpl+(S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
+  return 'journal-'+base+'-'+S.tpl+(isBooklet(S) ? '-booklet' : S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
 }
 async function exportPDF(){
   if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }

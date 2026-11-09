@@ -112,6 +112,9 @@ input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule
 .inline{display:flex;gap:8px}
 .inline input{flex:1;min-width:0}
 .btns{display:flex;flex-wrap:wrap;gap:8px}
+.parts{display:grid;gap:8px;margin-bottom:8px}
+.part-row{display:grid;grid-template-columns:18px minmax(0,1fr) 68px auto;gap:8px;align-items:center}
+.part-n{font:400 12px var(--mono);color:var(--muted);text-align:right}
 
 .actions{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--bg)}
 .actions .btn{flex:1}
@@ -217,29 +220,32 @@ const presetLabel = k => (ALL_PRESETS.find(p => p.k === k) || {}).l || '';
 const TEMPLATES = [
   {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lined', l:'Ruled lines'},
   {v:'cornell', l:'Cornell notes'}, {v:'checklist', l:'Checklist'},
-  {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'monthly', l:'Monthly calendar'}, {v:'blank', l:'Blank'}
+  {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'monthly', l:'Monthly calendar'},
+  {v:'habit', l:'Habit tracker'}, {v:'tracker', l:'Tracker or log'}, {v:'blank', l:'Blank'}
 ];
-const SP_KEYS = ['dots','grid','lined','cornell','checklist'];
+const tplName = v => (TEMPLATES.find(t => t.v === v) || {}).l || v;
+const SP_KEYS = ['dots','grid','lined','cornell','checklist','habit','tracker'];
 
 const DEFAULTS = {
   w:148, h:210, preset:'a5', unit:'mm',
   tpl:'dots',
-  spacings:{dots:5, grid:5, lined:7, cornell:7, checklist:9},
+  spacings:{dots:5, grid:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
   weight:0.4, intensity:70, color:'#6b7280',
   marginLine:false,
   cueW:45, summaryH:40, cornellLines:true, cornellLabels:true,
   cbSize:4.5,
   startHour:6, endHour:20, halfHours:true, hour24:false, priorities:true, dailyNotes:false,
-  weekStart:1, weekLayout:'grid',
+  weekStart:1, weekLayout:'grid', trackKind:'mood',
   mt:12, mb:12, mi:14, mo:10, mirror:false,
-  title:'', titleSize:12, dateField:false, pageNums:'none', startNum:1,
+  title:'', titleSize:12, headerNote:'', dateField:false, pageNums:'none', pageNumPlace:'footer', startNum:1,
   paper:'letter', sheetOrient:'auto', sheetMargin:5, gap:0, cutMarks:true, pages:4, fill:true,
   spread:false, booklet:false, bleedOn:false, bleed:2, shareCuts:false,
   dated:false, startDate:'', monthCal:true, monthFill:true,
   holes:'none', holeEdge:7,
-  duplex:false, calFL:20, calFT:20, calBL:20, calBT:20
+  duplex:false, calFL:20, calFT:20, calBL:20, calBT:20,
+  mix:false, parts:[{tpl:'monthly', n:1}, {tpl:'daily', n:7}, {tpl:'dots', n:4}]
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill','duplex'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill','duplex','mix'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -258,6 +264,12 @@ function sanitize(s){
   for(const k of ['mt','mb','mi','mo']) s[k] = num(s[k],10,0,60);
   s.title = String(s.title || '').slice(0,60); s.titleSize = num(s.titleSize,12,8,36);
   if(!['none','outer','inner','center'].includes(s.pageNums)) s.pageNums = 'none';
+  s.headerNote = String(s.headerNote || '').slice(0,60);
+  s.pageNumPlace = s.pageNumPlace === 'header' ? 'header' : 'footer';
+  if(!['mood','reading','log'].includes(s.trackKind)) s.trackKind = 'mood';
+  s.parts = (Array.isArray(s.parts) ? s.parts : []).filter(pt => pt && typeof pt === 'object').slice(0,12)
+    .map(pt => ({tpl: TEMPLATES.some(t => t.v === pt.tpl) ? pt.tpl : 'dots', n: Math.round(num(pt.n,1,1,200))}));
+  if(!s.parts.length) s.parts = clone(DEFAULTS.parts);
   s.startNum = Math.round(num(s.startNum,1,0,9999));
   if(!PAPERS[s.paper]) s.paper = 'letter';
   if(!['auto','portrait','landscape'].includes(s.sheetOrient)) s.sheetOrient = 'auto';
@@ -312,6 +324,9 @@ const dotRadius = w => 0.1 + w*0.32;
 /* Bleed: dot grid, square grid and ruled patterns can fill the page and run
    past its edges, so a slightly-off cut still looks clean. */
 const BLEED_TPLS = ['dots','grid','lined'];
+/* Mixed pages: one PDF made of parts, each a run of pages of one type. */
+const uses = (s,t) => s.mix ? s.parts.some(pt => pt.tpl === t) : s.tpl === t;
+const bleedTpl = s => s.mix ? s.parts.some(pt => BLEED_TPLS.includes(pt.tpl)) : BLEED_TPLS.includes(s.tpl);
 /* Printer calibration. The test sheet prints a line 20 mm from the left and top
    edges on each side of the paper; the distances measured with a ruler say how far
    the printer shifts each side, and the PDF shifts the other way to cancel it. */
@@ -388,7 +403,7 @@ function holeYs(s){
   const ys = [s.h/2 - span/2]; for(const g of H.gaps) ys.push(ys[ys.length-1] + g);
   return {ys: ys.filter(y => y - H.r >= 0.5 && y + H.r <= s.h - 0.5), all: ys.length};
 }
-const bleedOf = s => s.bleedOn && BLEED_TPLS.includes(s.tpl) ? s.bleed : 0;
+const bleedOf = s => s.bleedOn && bleedTpl(s) ? s.bleed : 0;
 /* Booklet spreads: two pages side by side, folded at the spine. */
 const pieceW = s => s.spread ? 2*s.w : s.w;
 /* Saddle-stitch booklet: spreads printed on both sides of the paper, in the
@@ -421,10 +436,13 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 
 /* Dated pages: daily, weekly and monthly pages can carry real dates. Dates are
    whole days in UTC so they never shift with time zones or daylight saving. */
-const DATED_TPLS = ['daily','weekly','monthly'];
+const DATED_TPLS = ['daily','weekly','monthly','habit','tracker'];
+/* Pages that cover a whole month: one page per month. */
+const MONTH_TPLS = ['monthly','habit','tracker'];
 const DAY_MS = 864e5;
-const isDated = s => !!s.dated && DATED_TPLS.includes(s.tpl);
-const hasMonthCal = s => isDated(s) && s.monthCal && s.tpl !== 'monthly';
+const datedTpl = (s,t) => DATED_TPLS.includes(t) && (t !== 'tracker' || s.trackKind === 'mood');
+const isDated = s => !!s.dated && (s.mix ? s.parts.some(pt => datedTpl(s, pt.tpl)) : datedTpl(s, s.tpl));
+const hasMonthCal = s => !s.mix && isDated(s) && s.monthCal && !MONTH_TPLS.includes(s.tpl);
 function startOf(s){
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.startDate || '');
   if(m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
@@ -441,12 +459,27 @@ function weekLabel(a){
 }
 /* What page p shows: which template, and its date when dates are on. With a month
    calendar first, page 1 is the calendar and the dated pages start on page 2. */
+/* Which part of a mixed set page p falls in, and its place among pages of the same
+   type, so dated parts of one type carry on from each other. Pages past the end
+   (filling the last sheet) continue the last part. */
+function partAt(s,p){
+  const seen = {}; let off = 0;
+  for(let k=0; k<s.parts.length; k++){
+    const pt = s.parts[k];
+    if(p <= off + pt.n || k === s.parts.length - 1) return {tpl:pt.tpl, i:(seen[pt.tpl] || 0) + p - off, k};
+    off += pt.n; seen[pt.tpl] = (seen[pt.tpl] || 0) + pt.n;
+  }
+}
 function pageInfo(s,p){
+  if(s.mix){
+    const a = partAt(s,p);
+    return Object.assign(pageInfo(Object.assign({}, s, {mix:false, tpl:a.tpl, monthCal:false}), a.i), {part:a.k});
+  }
   if(!isDated(s)) return {tpl:s.tpl};
   let tpl = s.tpl, i = p;
   if(hasMonthCal(s)){ if(p === 1) tpl = 'monthly'; else i = p - 1; }
   const st = startOf(s);
-  if(tpl === 'monthly'){
+  if(MONTH_TPLS.includes(tpl)){
     const m = new Date(Date.UTC(st.getUTCFullYear(), st.getUTCMonth() + (tpl === s.tpl ? i-1 : 0), 1));
     return {tpl, month:m, label:MONTHS[m.getUTCMonth()]+' '+m.getUTCFullYear()};
   }
@@ -456,7 +489,8 @@ function pageInfo(s,p){
 }
 /* Pages to print: the number asked for, or with dates on, through the end of the start month. */
 function pageCount(s){
-  if(!isDated(s) || !s.monthFill || s.tpl === 'monthly') return s.pages;
+  if(s.mix) return s.parts.reduce((a,pt) => a + pt.n, 0);
+  if(!isDated(s) || !s.monthFill || MONTH_TPLS.includes(s.tpl)) return s.pages;
   const st = startOf(s), end = monthEnd(st), cal = hasMonthCal(s) ? 1 : 0;
   if(s.tpl === 'daily') return Math.round((end - st)/DAY_MS) + 1 + cal;
   return Math.round((weekOf(end, s.weekStart) - weekOf(st, s.weekStart))/(7*DAY_MS)) + 1 + cal;
@@ -588,8 +622,83 @@ const TPL = {
       const k = first + d - 1, c = k % 7, r = Math.floor(k/7);
       C.ops.push(T(B.x + c*cw + 1.2, top + r*rh + 3.4, String(d), 7, C.mute));
     }
+  },
+
+  /* Habit tracker: a habit on each row, a box for every day of the month. */
+  habit(s,B,C,p,info){
+    let y = B.y;
+    const dated = !!(info && info.month), days = dated ? monthEnd(info.month).getUTCDate() : 31;
+    if(!dated) y = monthLine(B,C);
+    const nameW = clamp(B.w*0.28, 18, 45), x0 = B.x + nameW, cw = (B.w - nameW)/days;
+    const fs = cw < 3.2 ? 5 : cw < 4.5 ? 6 : 7, hh = dated ? 8 : 5;
+    const wd = d => dated ? addDays(info.month, d-1).getUTCDay() : null;
+    if(dated) for(let d=1; d<=days; d++) C.ops.push(T(x0 + (d-0.5)*cw, y+3, DAYS[wd(d)].slice(0,1), fs, C.mute, 'c'));
+    // Very narrow boxes label every other day so the numbers don't run together.
+    const step = cw < 2.4 ? 2 : 1;
+    for(let d=1; d<=days; d+=step) C.ops.push(T(x0 + (d-0.5)*cw, y+hh-1.2, String(d), fs, C.mute, 'c'));
+    C.ops.push(T(B.x, y+hh-1.2, 'HABIT', 7, C.mute, 'l', true));
+    const sp = spacing(s), top = y + hh + 0.8;
+    const rows = Math.max(1, Math.floor((B.y + B.h - top)/sp + 1e-9)), bot = top + rows*sp;
+    for(let r=0; r<=rows; r++) C.ops.push(L(B.x, top + r*sp, B.x+B.w, top + r*sp, C.lw, C.line));
+    C.ops.push(L(x0, top, x0, bot, C.lw, C.line));
+    // A darker line at the start of each week.
+    for(let d=1; d<days; d++){
+      const wk = dated ? wd(d+1) === s.weekStart : d % 7 === 0;
+      C.ops.push(L(x0 + d*cw, top, x0 + d*cw, bot, C.lw, wk ? C.line : C.faint));
+    }
+    C.ops.push(L(B.x+B.w, top, B.x+B.w, bot, C.lw, C.line));
+  },
+
+  /* Tracker or log: a mood row for every day, a reading log, or a dated log. */
+  tracker(s,B,C,p,info){
+    let y = B.y;
+    if(s.trackKind === 'mood'){
+      const dated = !!(info && info.month), days = dated ? monthEnd(info.month).getUTCDate() : 31;
+      if(!dated) y = monthLine(B,C);
+      const hh = 5.5, rh = Math.max(2.2, (B.y + B.h - y - hh)/days);
+      const r = clamp(rh*0.3, 0.8, 1.7), pitch = Math.max(2*r + 1.4, 4), dw = 10;
+      const cx0 = B.x + dw + r + 0.5, noteX = cx0 + 4*pitch + r + 3;
+      const fs = clamp(rh/PT*0.7, 5, 7);
+      C.ops.push(T(B.x, y+3.8, 'DAY', 7, C.mute, 'l', true));
+      for(let k=0;k<5;k++) C.ops.push(T(cx0 + k*pitch, y+3.8, String(k+1), 6, C.mute, 'c'));
+      C.ops.push(T(noteX, y+3.8, 'NOTES', 7, C.mute, 'l', true));
+      C.ops.push(L(B.x, y+hh, B.x+B.w, y+hh, C.lw, C.line));
+      for(let d=0; d<days; d++){
+        const yy = y + hh + d*rh, cy = yy + rh/2;
+        const lab = String(d+1)+(dated ? ' '+DAYS[addDays(info.month, d).getUTCDay()].slice(0,1) : '');
+        C.ops.push(T(B.x, cy + fs*PT*0.35, lab, fs, C.mute));
+        for(let k=0;k<5;k++) C.ops.push(O(cx0 + k*pitch, cy, r, C.lw, C.line));
+        C.ops.push(L(B.x, yy+rh, B.x+B.w, yy+rh, C.lw, C.faint));
+      }
+      return;
+    }
+    const sp = spacing(s), hh = 5.5, fs = B.w < 100 ? 5.5 : 7;
+    const cols = s.trackKind === 'reading'
+      ? [['TITLE',0.38],['AUTHOR',0.26],['START',0.12],['FINISH',0.12],['RATING',0.12]]
+      : [['DATE',clamp(18/B.w, 0.12, 0.3)],['ENTRY',0]];
+    if(!cols[cols.length-1][1]) cols[cols.length-1][1] = 1 - cols.slice(0,-1).reduce((a,c) => a + c[1], 0);
+    const rows = Math.max(1, Math.floor((B.h - hh)/sp + 1e-9)), top = y + hh, bot = top + rows*sp;
+    let x = B.x;
+    cols.forEach(([name, f], k) => {
+      const w = f*B.w;
+      C.ops.push(T(x + (k ? 1.5 : 0), y+3.8, name, fs, C.mute, 'l', true));
+      if(k) C.ops.push(L(x, top, x, bot, C.lw, C.faint));
+      if(name === 'RATING' && w >= 12){
+        const rr = 0.9, pt = (w - 3)/5;
+        for(let r=0; r<rows; r++) for(let j=0;j<5;j++) C.ops.push(O(x + 1.5 + pt*(j+0.5), top + r*sp + sp/2, rr, C.lw, C.faint));
+      }
+      x += w;
+    });
+    C.ops.push(L(B.x, top, B.x+B.w, top, C.lw, C.line));
+    for(let r=1; r<=rows; r++) C.ops.push(L(B.x, top + r*sp, B.x+B.w, top + r*sp, C.lw, C.line));
   }
 };
+/* A "Month" write-in line for undated month pages; returns where the page continues. */
+function monthLine(B,C){
+  C.ops.push(T(B.x, B.y+4.2, 'MONTH', 7, C.mute, 'l', true));
+  C.ops.push(L(B.x+12, B.y+4.6, B.x+Math.min(B.w, 70), B.y+4.6, C.lw, C.line));
+  return B.y + 8;
+}
 
 function buildPage(s,p,opt){
   opt = opt || {};
@@ -602,23 +711,37 @@ function buildPage(s,p,opt){
     ink: darken(s.color, 0.55)
   };
   let B = {x:R.x, y:R.y, w:R.w, h:R.h};
-  const title = s.title.trim(), info = pageInfo(s,p), head = info.label || '';
-  const band = !!(title || s.dateField || head);
+  // In a mixed set, or on a month calendar before dated pages, the page draws as its own type.
+  const info = pageInfo(s,p), t = s.mix || info.tpl !== s.tpl ? Object.assign({}, s, {tpl:info.tpl, mix:false}) : s;
+  const num = String(s.startNum + p - 1), sub = v => v.replace(/\{n\}/gi, num).trim();
+  const title = sub(s.title), note = sub(s.headerNote), head = info.label || '';
+  const numHead = s.pageNums !== 'none' && s.pageNumPlace === 'header';
+  const numRight = s.pageNums === 'outer' ? R.innerLeft : !R.innerLeft;
+  const band = !!(title || s.dateField || head || note || numHead);
   if(band){
     const hh = Math.max(9, s.titleSize*PT*1.9 + 2), base = R.y + hh - 3.2;
-    if(head){
-      // A dated page leads with its date; a page title moves to the right in small type.
-      ops.push(T(R.x, base, head, s.titleSize, C.ink, 'l', true));
-      if(title) ops.push(T(R.x+R.w, base, title, 8, C.mute, 'r'));
-    } else if(title) ops.push(T(R.x, base, title, s.titleSize, C.ink, 'l', true));
-    if(s.dateField && !head){
-      ops.push(T(R.x+R.w-34, base, 'Date', 8, C.ink));
-      ops.push(L(R.x+R.w-27, base+0.5, R.x+R.w, base+0.5, C.lw, C.line));
+    // A dated page leads with its date; a page title moves to the right in small type.
+    // A page number in the header takes the outer, inner or centre spot and the rest moves aside.
+    let xl = R.x, xr = R.x + R.w, numOp = null;
+    if(numHead){
+      const nw = num.length*8*PT*0.56 + 3;
+      if(s.pageNums === 'center') numOp = T(R.x + R.w/2, base, num, 8, C.ink, 'c');
+      else if(numRight){ numOp = T(xr, base, num, 8, C.ink, 'r'); xr -= nw; }
+      else { numOp = T(xl, base, num, 8, C.ink, 'l'); xl += nw; }
     }
+    const main = head || title, small = [head ? title : '', note].filter(Boolean).join('  \u00b7  ');
+    const dateOn = s.dateField && !head;
+    if(main) ops.push(T(xl, base, main, s.titleSize, C.ink, 'l', true));
+    if(small) ops.push(T(dateOn ? xr - 38 : xr, base, small, 8, C.mute, 'r'));
+    if(dateOn){
+      ops.push(T(xr-34, base, 'Date', 8, C.ink));
+      ops.push(L(xr-27, base+0.5, xr, base+0.5, C.lw, C.line));
+    }
+    if(numOp) ops.push(numOp);
     ops.push(L(R.x, R.y+hh-1.2, R.x+R.w, R.y+hh-1.2, C.lw, C.line));
     B = {x:R.x, y:R.y+hh, w:R.w, h:Math.max(1, R.h-hh)};
   }
-  const bl = bleedOf(s);
+  const bl = bleedOf(t);
   if(bl){
     // Fill the page and run past its edges. In a spread the spine side keeps its margin.
     // Edges shared with a neighbouring page (fewer-cuts layout) stop exactly at the page edge.
@@ -632,7 +755,7 @@ function buildPage(s,p,opt){
     if(sd.t === false) C.ay = 0; else if(sd.b === false) C.ay = s.h;
     C.marginX = R.x + Math.min(20, R.w*0.15);
   }
-  TPL[info.tpl](s,B,C,p,info);
+  TPL[info.tpl](t,B,C,p,info);
   const H = holesOf(s);
   if(H){
     // Punch marks on the binding edge: an outlined hole with a small cross at its centre.
@@ -648,14 +771,10 @@ function buildPage(s,p,opt){
       ops.push(L(x, 0, x, s.h, hw, hc, [1,1.5]));
     }
   }
-  if(s.pageNums !== 'none'){
+  if(s.pageNums !== 'none' && !numHead){
     const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
-    const n = String(s.startNum + p - 1);
-    if(s.pageNums === 'center') ops.push(T(s.w/2, yb, n, 8, C.ink, 'c'));
-    else {
-      const right = s.pageNums === 'outer' ? R.innerLeft : !R.innerLeft;
-      ops.push(T(right ? R.x+R.w : R.x, yb, n, 8, C.ink, right ? 'r' : 'l'));
-    }
+    if(s.pageNums === 'center') ops.push(T(s.w/2, yb, num, 8, C.ink, 'c'));
+    else ops.push(T(numRight ? R.x+R.w : R.x, yb, num, 8, C.ink, numRight ? 'r' : 'l'));
   }
   if(opt.guides) ops.push(RC(R.x, R.y, R.w, R.h, 0.18, '#3b82f6', [1.2,1.2]));
   return ops;
@@ -889,7 +1008,7 @@ const shareLink = s => shareBase() + '#s=' + encodeShare(shareData(s));
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift, shareData, encodeShare, decodeShare, shareLink};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift, shareData, encodeShare, decodeShare, shareLink, partAt};
 }
 if(typeof document === 'undefined') return;
 
@@ -947,7 +1066,9 @@ function matchPreset(){
 }
 
 const SPACE_TPLS = SP_KEYS;
-const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height'};
+const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height', habit:'Row height', tracker:'Row height'};
+const MIX_SP_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Ruled line spacing', cornell:'Cornell line spacing', checklist:'Checklist row height', habit:'Habit row height', tracker:'Log row height'};
+const hasSpacing = (s,t) => SPACE_TPLS.includes(t) && !(t === 'tracker' && s.trackKind === 'mood');
 const COLORS = [['#6b7280','Graphite'],['#a3a9b4','Silver'],['#3b6ea8','Blue'],['#2f7d5b','Green'],['#a8642a','Copper'],['#111827','Black']];
 
 const SECTIONS = [
@@ -963,31 +1084,38 @@ const SECTIONS = [
     {id:'spreadHint', t:'hint', text:s=>'Each spread is '+fmtLen(2*s.w)+' × '+fmtLen(s.h)+' '+s.unit+'. Fold it in half at the small ticks at the top and bottom. Each page keeps its inner margin beside the fold.', show:s=>s.spread}
   ]},
   {t:'Page style', open:true, c:[
-    {id:'tpl', t:'select', label:'Template', opts:TEMPLATES.map(t=>[t.v,t.l]), key:'tpl'},
+    {id:'tpl', t:'select', label:'Template', opts:TEMPLATES.map(t=>[t.v,t.l]), key:'tpl', show:s=>!s.mix},
+    {id:'mix', t:'check', label:'Mix page types in one PDF', key:'mix'},
+    {id:'parts', t:'parts', label:'Pages, in printed order', show:s=>s.mix},
+    {id:'partsHint', t:'hint', text:partsHint, show:s=>s.mix},
     {id:'spacing', t:'len', label:s=>SPACE_LABEL[s.tpl]||'Spacing', min:1.5, max:30,
-      get:s=>s.spacings[s.tpl], set:(s,v)=>{ s.spacings[s.tpl]=v; }, show:s=>SPACE_TPLS.includes(s.tpl)},
-    {id:'weight', t:'range', label:s=>s.tpl==='dots'?'Dot size':'Line weight', key:'weight', min:.1, max:2, step:.05,
-      fmt:s=>s.tpl==='dots'?(2*dotRadius(s.weight)).toFixed(2)+' mm':s.weight.toFixed(2)+' pt', show:s=>s.tpl!=='blank'},
+      get:s=>s.spacings[s.tpl], set:(s,v)=>{ s.spacings[s.tpl]=v; }, show:s=>!s.mix && hasSpacing(s, s.tpl)},
+    ...SP_KEYS.map(k => ({id:'sp_'+k, t:'len', label:MIX_SP_LABEL[k], min:1.5, max:30,
+      get:s=>s.spacings[k], set:(s,v)=>{ s.spacings[k]=v; }, show:s=>s.mix && uses(s,k) && hasSpacing(s,k)})),
+    {id:'weight', t:'range', label:s=>s.tpl==='dots'&&!s.mix?'Dot size':'Line weight', key:'weight', min:.1, max:2, step:.05,
+      fmt:s=>s.tpl==='dots'&&!s.mix?(2*dotRadius(s.weight)).toFixed(2)+' mm':s.weight.toFixed(2)+' pt', show:s=>s.mix||s.tpl!=='blank'},
     {id:'intensity', t:'range', label:'Darkness', key:'intensity', min:10, max:100, step:5, fmt:s=>s.intensity+'%'},
     {id:'color', t:'color', label:'Ink colour', key:'color'},
-    {id:'marginLine', t:'check', label:'Vertical margin line', key:'marginLine', show:s=>s.tpl==='lined'},
-    {id:'cueW', t:'len', label:'Cue column', key:'cueW', min:15, max:120, show:s=>s.tpl==='cornell'},
-    {id:'summaryH', t:'len', label:'Summary height', key:'summaryH', min:15, max:120, show:s=>s.tpl==='cornell'},
-    {id:'cornellLines', t:'check', label:'Ruled lines in notes and summary', key:'cornellLines', show:s=>s.tpl==='cornell'},
-    {id:'cornellLabels', t:'check', label:'Section labels', key:'cornellLabels', show:s=>s.tpl==='cornell'},
-    {id:'cbSize', t:'len', label:'Checkbox size', key:'cbSize', min:2, max:10, show:s=>s.tpl==='checklist'},
-    {id:'startHour', t:'num', label:'First hour (0–23)', key:'startHour', min:0, max:23, show:s=>s.tpl==='daily'},
-    {id:'endHour', t:'num', label:'Last hour (1–24)', key:'endHour', min:1, max:24, show:s=>s.tpl==='daily'},
-    {id:'halfHours', t:'check', label:'Half-hour lines', key:'halfHours', show:s=>s.tpl==='daily'},
-    {id:'hour24', t:'check', label:'24-hour labels', key:'hour24', show:s=>s.tpl==='daily'},
-    {id:'priorities', t:'check', label:'Top priorities box', key:'priorities', show:s=>s.tpl==='daily'},
-    {id:'dailyNotes', t:'check', label:'Notes column', key:'dailyNotes', show:s=>s.tpl==='daily'},
-    {id:'weekStart', t:'select', label:'Week starts on', opts:[['1','Monday'],['0','Sunday']], key:'weekStart', numeric:true, show:s=>s.tpl==='weekly'||s.tpl==='monthly'||hasMonthCal(s)},
-    {id:'weekLayout', t:'select', label:'Weekly layout', opts:[['grid','Boxes (7 days + notes)'],['rows','Stacked rows']], key:'weekLayout', show:s=>s.tpl==='weekly'},
-    {id:'dated', t:'check', label:'Fill in real dates', key:'dated', show:s=>DATED_TPLS.includes(s.tpl)},
-    {id:'startDate', t:'date', label:s=>s.tpl==='monthly'?'First month':'Start date', key:'startDate', show:isDated},
-    {id:'monthCal', t:'check', label:'Start with a month calendar page', key:'monthCal', show:s=>isDated(s)&&s.tpl!=='monthly'},
-    {id:'monthFill', t:'check', label:'Print through the end of the month', key:'monthFill', show:s=>isDated(s)&&s.tpl!=='monthly'},
+    {id:'marginLine', t:'check', label:'Vertical margin line', key:'marginLine', show:s=>uses(s,'lined')},
+    {id:'cueW', t:'len', label:'Cue column', key:'cueW', min:15, max:120, show:s=>uses(s,'cornell')},
+    {id:'summaryH', t:'len', label:'Summary height', key:'summaryH', min:15, max:120, show:s=>uses(s,'cornell')},
+    {id:'cornellLines', t:'check', label:'Ruled lines in notes and summary', key:'cornellLines', show:s=>uses(s,'cornell')},
+    {id:'cornellLabels', t:'check', label:'Section labels', key:'cornellLabels', show:s=>uses(s,'cornell')},
+    {id:'cbSize', t:'len', label:'Checkbox size', key:'cbSize', min:2, max:10, show:s=>uses(s,'checklist')},
+    {id:'startHour', t:'num', label:'First hour (0–23)', key:'startHour', min:0, max:23, show:s=>uses(s,'daily')},
+    {id:'endHour', t:'num', label:'Last hour (1–24)', key:'endHour', min:1, max:24, show:s=>uses(s,'daily')},
+    {id:'halfHours', t:'check', label:'Half-hour lines', key:'halfHours', show:s=>uses(s,'daily')},
+    {id:'hour24', t:'check', label:'24-hour labels', key:'hour24', show:s=>uses(s,'daily')},
+    {id:'priorities', t:'check', label:'Top priorities box', key:'priorities', show:s=>uses(s,'daily')},
+    {id:'dailyNotes', t:'check', label:'Notes column', key:'dailyNotes', show:s=>uses(s,'daily')},
+    {id:'trackKind', t:'select', label:'Tracker type', opts:[['mood','Mood: a row per day, rate it 1 to 5'],['reading','Reading log'],['log','Log with a date column']], key:'trackKind', show:s=>uses(s,'tracker')},
+    {id:'trackHint', t:'hint', text:trackHint, show:s=>uses(s,'habit')||uses(s,'tracker')},
+    {id:'weekStart', t:'select', label:'Week starts on', opts:[['1','Monday'],['0','Sunday']], key:'weekStart', numeric:true, show:s=>uses(s,'weekly')||uses(s,'monthly')||(uses(s,'habit')&&isDated(s))||hasMonthCal(s)},
+    {id:'weekLayout', t:'select', label:'Weekly layout', opts:[['grid','Boxes (7 days + notes)'],['rows','Stacked rows']], key:'weekLayout', show:s=>uses(s,'weekly')},
+    {id:'dated', t:'check', label:'Fill in real dates', key:'dated', show:s=>s.mix ? s.parts.some(pt=>datedTpl(s,pt.tpl)) : datedTpl(s,s.tpl)},
+    {id:'startDate', t:'date', label:s=>!s.mix&&MONTH_TPLS.includes(s.tpl)?'First month':'Start date', key:'startDate', show:isDated},
+    {id:'monthCal', t:'check', label:'Start with a month calendar page', key:'monthCal', show:s=>isDated(s)&&!s.mix&&!MONTH_TPLS.includes(s.tpl)},
+    {id:'monthFill', t:'check', label:'Print through the end of the month', key:'monthFill', show:s=>isDated(s)&&!s.mix&&!MONTH_TPLS.includes(s.tpl)},
     {id:'datedHint', t:'hint', text:datedHint, show:isDated}
   ]},
   {t:'Margins', c:[
@@ -1005,11 +1133,14 @@ const SECTIONS = [
     {id:'holesSpread', t:'hint', text:'Ring holes are off while booklet spreads are on.', show:s=>s.spread && s.holes !== 'none'}
   ]},
   {t:'Header and footer', c:[
-    {id:'title', t:'text', label:'Page title', key:'title', placeholder:'Optional, e.g. Notes'},
-    {id:'titleSize', t:'num', label:'Title size (pt)', key:'titleSize', min:8, max:36},
+    {id:'title', t:'text', label:'Header text', key:'title', placeholder:'Optional, e.g. Notes or Page {n}'},
+    {id:'titleSize', t:'num', label:'Header text size (pt)', key:'titleSize', min:8, max:36},
+    {id:'headerNote', t:'text', label:'Small text on the right', key:'headerNote', placeholder:'Optional, e.g. your name or a project'},
     {id:'dateField', t:'check', label:'Date line', key:'dateField'},
     {id:'pageNums', t:'select', label:'Page numbers', opts:[['none','None'],['outer','Outer corner'],['inner','Inner corner'],['center','Centre']], key:'pageNums'},
-    {id:'startNum', t:'num', label:'First page number', key:'startNum', min:0, max:9999, show:s=>s.pageNums!=='none'}
+    {id:'pageNumPlace', t:'seg', label:'Page number goes in the', opts:[['footer','Footer'],['header','Header']], key:'pageNumPlace', show:s=>s.pageNums!=='none'},
+    {id:'startNum', t:'num', label:'First page number', key:'startNum', min:0, max:9999, show:s=>s.pageNums!=='none'},
+    {id:'headerHint', t:'hint', text:'Type {n} in either header box to print the page number there, for example Page {n}.'}
   ]},
   {t:'Print on paper', open:true, c:[
     {id:'paper', t:'seg', label:'Paper', opts:[['letter','US Letter'],['a4','A4']], key:'paper'},
@@ -1017,11 +1148,11 @@ const SECTIONS = [
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
     {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},
     {id:'gap', t:'len', label:'Gap between pages', key:'gap', min:0, max:30, show:s=>!s.shareCuts},
-    {id:'pages', t:'num', show:s=>pageCount(s)===s.pages, label:s=>isBooklet(s)?'Booklet pages (rounds up to a multiple of 4)':isDated(s)&&s.tpl==='monthly'?'Months to print':s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
+    {id:'pages', t:'num', show:s=>!s.mix&&pageCount(s)===s.pages, label:s=>isBooklet(s)?'Booklet pages (rounds up to a multiple of 4)':isDated(s)&&MONTH_TPLS.includes(s.tpl)?'Months to print':s.spread?'Pages to print (2 per spread)':'Pages to print', key:'pages', min:1, max:200},
     {id:'bookletHint', t:'hint', text:bookletHint, show:isBooklet},
-    {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:s=>BLEED_TPLS.includes(s.tpl)},
-    {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
-    {id:'bleedHint', t:'hint', text:s=>s.shareCuts ? 'The pattern fills each page and runs past the outside of the block, so a cut that is slightly off still looks clean. Inside the block, neighbouring pages meet at a shared cut line. The cut marks show the true page edges.' : 'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && BLEED_TPLS.includes(s.tpl)},
+    {id:'bleedOn', t:'check', label:'Run the pattern past the cut line', key:'bleedOn', show:bleedTpl},
+    {id:'bleed', t:'len', label:'Bleed', key:'bleed', min:0.5, max:6, show:s=>s.bleedOn && bleedTpl(s)},
+    {id:'bleedHint', t:'hint', text:s=>s.shareCuts ? 'The pattern fills each page and runs past the outside of the block, so a cut that is slightly off still looks clean. Inside the block, neighbouring pages meet at a shared cut line. The cut marks show the true page edges.' : 'The pattern fills each page and runs past its edges, so a cut that is slightly off still looks clean. Pages sit at least twice the bleed apart, and the cut marks show the true page edges.', show:s=>s.bleedOn && bleedTpl(s)},
     {id:'cutMarks', t:'check', label:'Cut marks in the margin', key:'cutMarks'},
     {id:'fill', t:'check', label:'Fill every sheet (add extra pages to complete the last sheet)', key:'fill'},
     {id:'printHint', t:'hint', text:'Print the PDF at 100% or Actual size. Fit to page rescales the pages and they will no longer match the size you chose.'}
@@ -1064,12 +1195,40 @@ function datedHint(s){
   const n = pageCount(s), cal = hasMonthCal(s);
   const a = pageInfo(s, cal ? 2 : 1), b = pageInfo(s, n);
   const name = i => i.week ? MONTHS[i.week.getUTCMonth()]+' '+i.week.getUTCDate() : i.label;
+  if(s.mix){
+    const out = []; let off = 0;
+    for(const pt of s.parts){
+      if(datedTpl(s, pt.tpl)){
+        const x = pageInfo(s, off+1), y = pageInfo(s, off+pt.n);
+        out.push(tplName(pt.tpl)+': '+(x.label === y.label ? x.label : x.week ? 'weeks starting '+name(x)+' to '+name(y) : x.label+' to '+y.label));
+      }
+      off += pt.n;
+      if(out.length === 6) break;
+    }
+    return (s.startDate ? '' : 'No start date set, so it uses the current month. ')+out.join('. ')+'. Each dated part carries on from the last part of the same type.';
+  }
   const range = n > (cal ? 1 : 0)
     ? (a.week ? (a.label === b.label ? 'the week of '+name(a) : 'weeks starting '+name(a)+' to '+name(b))
               : a.label === b.label ? a.label : a.label+' to '+b.label) : '';
   const lead = s.startDate ? '' : 'No start date set, so it uses the current month. ';
   return lead+(cal ? 'Page 1 is the '+pageInfo(s,1).label+' calendar'+(range ? ', then ' : '.') : '')
     +(range ? range+'.' : '')+' '+n+' page'+(n === 1 ? '' : 's')+'.';
+}
+function partsHint(s){
+  const n = pageCount(s);
+  return 'The PDF prints these parts in order, '+n+' page'+(n === 1 ? '' : 's')+' in all. Each type uses its own settings in this section, and the header, margins and colour apply to every page.';
+}
+function trackHint(s){
+  const out = [];
+  if(uses(s,'habit')){
+    const R = contentRect(s,1), cw = (R.w - clamp(R.w*0.28, 18, 45))/31;
+    out.push('Habit tracker: write a habit on each row and fill in a box each day you do it. Row height sets how many rows fit.'
+      +(cw < 3 ? ' The day boxes are narrow at this page width; landscape gives them more room.' : ''));
+  }
+  if(uses(s,'tracker')) out.push(s.trackKind === 'mood' ? 'Mood tracker: one row per day; fill in a circle from 1 (low) to 5 (high) and add a note.'
+    : s.trackKind === 'reading' ? 'Reading log: one book per row, with dates and a rating.' : 'Log: write the date on the left and the entry beside it.');
+  if((uses(s,'habit') || (uses(s,'tracker') && s.trackKind === 'mood')) && !isDated(s)) out.push('Tick Fill in real dates to print the month and its days.');
+  return out.join(' ');
 }
 function bookletHint(s){
   const pl = plan(s), B = pl.booklet;
@@ -1194,6 +1353,42 @@ function makeField(c){
       row.append(...sws, pick);
       wrap.append(el('span', {class:'lab'}, c.label), row);
       F.sync = () => { const v = read(c).toLowerCase(); sws.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.c === v))); pick.value = v; };
+      break;
+    }
+    case 'parts': {
+      // A row per part: page type, how many pages, and a Remove button.
+      const list = el('div', {class:'parts', id});
+      const add = el('button', {type:'button', class:'btn small', onclick:() => {
+        if(S.parts.length >= 12) return;
+        const last = S.parts[S.parts.length-1];
+        S.parts.push({tpl:last ? last.tpl : 'dots', n:last ? last.n : 4}); commit(c);
+      }}, 'Add pages');
+      wrap.append(el('span', {class:'lab'}, c.label), list, add);
+      let drawn = '';
+      const draw = () => {
+        list.textContent = '';
+        S.parts.forEach((pt,k) => {
+          const sel = el('select', {'aria-label':'Page type, part '+(k+1)});
+          for(const t of TEMPLATES) sel.append(el('option', {value:t.v}, t.l));
+          sel.value = pt.tpl;
+          sel.addEventListener('change', () => { S.parts[k].tpl = sel.value; commit(c); });
+          const inp = el('input', {type:'number', inputmode:'numeric', step:1, min:1, max:200, 'aria-label':'Pages in part '+(k+1)});
+          inp.value = pt.n;
+          inp.addEventListener('change', () => {
+            const v = parseFloat(inp.value);
+            if(isFinite(v)) S.parts[k].n = Math.round(clamp(v, 1, 200));
+            commit(c); inp.value = S.parts[k] ? S.parts[k].n : '';
+          });
+          const rm = el('button', {type:'button', class:'btn small', 'aria-label':'Remove part '+(k+1), disabled:S.parts.length < 2,
+            onclick:() => { if(S.parts.length > 1){ S.parts.splice(k,1); commit(c); } }}, 'Remove');
+          list.append(el('div', {class:'part-row'}, el('span', {class:'part-n'}, String(k+1)), sel, inp, rm));
+        });
+      };
+      F.sync = () => {
+        const now = JSON.stringify(S.parts);
+        if(now !== drawn){ drawn = now; draw(); }
+        add.disabled = S.parts.length >= 12;
+      };
       break;
     }
     case 'button': {
@@ -1365,7 +1560,7 @@ function render(){
   const note = $('#note');
   if(pl.scaled){ note.hidden = false; note.textContent = 'This '+(S.spread ? 'spread' : 'page')+' is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
   else note.hidden = true;
-  $('#subline').textContent = pl.paper+' · '+S.unit+' · '+(TEMPLATES.find(t => t.v === S.tpl) || {}).l.toLowerCase();
+  $('#subline').textContent = pl.paper+' · '+S.unit+' · '+(S.mix ? 'mixed pages' : tplName(S.tpl).toLowerCase());
 }
 
 function bindPreview(){
@@ -1428,7 +1623,7 @@ async function shareFile(file){
 }
 function pdfName(){
   const base = S.preset !== 'custom' ? S.preset : Math.round(S.w)+'x'+Math.round(S.h)+'mm';
-  return 'journal-'+base+'-'+S.tpl+(isBooklet(S) ? '-booklet' : S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
+  return 'journal-'+base+'-'+(S.mix ? 'mixed' : S.tpl)+(isBooklet(S) ? '-booklet' : S.spread ? '-spreads' : '')+'-'+S.paper+'.pdf';
 }
 async function exportTest(){
   if(!window.jspdf){ toast('The PDF library did not load. Check your connection and reload.'); return; }

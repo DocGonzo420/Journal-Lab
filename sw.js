@@ -2,7 +2,7 @@
    App files are saved on install and served from the cache, then refreshed in
    the background, so a new version shows up the next time the app opens.
    Bump VERSION to make installed copies download everything fresh. */
-const VERSION = 'v9';
+const VERSION = 'v10';
 const APP_CACHE = 'pjg-app-' + VERSION;
 const FONT_CACHE = 'pjg-fonts-v1';
 const APP_FILES = [
@@ -54,6 +54,11 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (url.origin !== self.location.origin) return;
+  // Extra fonts are fetched the first time they're picked and kept across updates.
+  if (url.pathname.includes('/vendor/fonts/')) {
+    event.respondWith(staleWhileRevalidate(event, FONT_CACHE));
+    return;
+  }
 
   if (req.mode === 'navigate') {
     // Any page in the app's folder opens the app.

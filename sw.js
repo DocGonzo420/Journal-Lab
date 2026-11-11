@@ -54,6 +54,9 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (url.origin !== self.location.origin) return;
+  // Cover Lab is a separate app in cover-lab/ with its own service worker.
+  const coverLab = new URL('./cover-lab', self.registration.scope).pathname;
+  if (url.pathname === coverLab || url.pathname.startsWith(coverLab + '/')) return;
   // Extra fonts are fetched the first time they're picked and kept across updates.
   if (url.pathname.includes('/vendor/fonts/')) {
     event.respondWith(staleWhileRevalidate(event, FONT_CACHE));

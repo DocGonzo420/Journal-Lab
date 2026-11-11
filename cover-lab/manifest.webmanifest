@@ -1,0 +1,19 @@
+{
+  "name": "Cover Lab",
+  "short_name": "Cover Lab",
+  "description": "Make generative abstract art covers for notebooks at real print sizes, and save them as PNG or PDF.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#e9ebe6",
+  "theme_color": "#1f4fd8",
+  "categories": ["design", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

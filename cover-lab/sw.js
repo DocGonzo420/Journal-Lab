@@ -3,7 +3,7 @@
    App files are saved on install and served from the cache, then refreshed in
    the background, so a new version shows up the next time the app opens.
    Bump VERSION to make installed copies download everything fresh. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const APP_CACHE = 'coverlab-app-' + VERSION;
 const FONT_CACHE = 'coverlab-fonts-v1';
 const APP_FILES = [

@@ -4,7 +4,7 @@ Make generative abstract art covers for notebooks at real print sizes, and save 
 
 **Open the app:** https://docgonzo420.github.io/Journal-Lab/cover-lab/
 
-- **Styles:** Flow, Blocks, Contours, Layers, Terrazzo, Orbits, each with endless variations from a seed (same seed, same art)
+- **Styles:** Flow, Blocks, Contours, Layers, Terrazzo, Orbits, Waves, Halftone, Truchet, Shards, Plaid, Rays, Marble, Cutouts, each with endless variations from a seed (same seed, same art)
 - **Colour:** 12 palettes, or mix your own six colours
 - **Sizes:** Pocket, A5, A6, B6, Traveler's regular, Traveler's passport, Half letter, Letter, or a custom size
 - **Print:** front only or wraparound (back + front), optional 3 or 5 mm bleed, label plate or band with your title

@@ -4,7 +4,7 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 
 **Open the app:** https://docgonzo420.github.io/Journal-Lab/
 
-- **Page styles:** dot grid, square grid, ruled lines, Cornell notes, checklist, daily planner, weekly planner, monthly calendar, habit tracker, mood tracker, reading log, dated log, blank
+- **Page styles:** dot grid, square grid, corner grid (L marks or crosses), ruled lines, Cornell notes, checklist, daily planner, weekly planner, monthly calendar, habit tracker, mood tracker, reading log, dated log, title page, blank
 - **Sizes:** A4, A5 (Hobonichi Cousin), A6, B5, B6, US Letter, Half Letter, Junior Legal, Quarter Letter, Field Notes, Passport Travelers Notebook (89 × 124 mm), pocket and large notebooks, or any custom size
 - **Printing:** as many pages as fit on each sheet, with cut marks, mirrored margins for double-sided books, titles, date lines and page numbers
 - **Easier cutting and folding:** run dot grid, square grid or ruled patterns past the cut line (bleed) so a slightly-off cut still looks clean, and print booklet spreads (two pages side by side) with fold marks at the spine, or butt pages together so neighbours share cut lines (fewer cuts)
@@ -14,6 +14,8 @@ Make printable journal and planner pages at any size, lay them out on US Letter 
 - **Habit and mood trackers:** a month of habits with a box for each day, or a row per day to rate your mood from 1 to 5, with real dates if you like
 - **Headers:** header text, small text on the right, and page numbers in the header or footer; type {n} anywhere in the header to print the page number there
 - **Mixed pages:** build one PDF from several page types in order, such as a month calendar, a week of daily pages and a few dot grid pages; dated parts carry on from each other
+- **Title pages:** a title, subtitle and third line placed anywhere on the page, with dividers (single, double, thick and thin, dotted, diamond), frames, corner brackets and name or date lines
+- **Fonts:** pick a font for headers and title pages and another for labels: Helvetica, Times, Courier, Playfair Display, Josefin Sans, Caveat or Amatic SC
 - **Printer calibration:** a two-sided test sheet shows how much your printer cuts off at each edge and how far it shifts the front and back; enter the measurements and every PDF corrects for them
 - **Share links:** send a link that opens Journal Lab with your exact page setup; your printer margin and calibration stay on your device
 - **Works offline:** install it as an app on your phone or computer and it keeps working without a connection
@@ -43,3 +45,5 @@ Everything runs in the browser; there's no server and no build step.
 | `vendor/jspdf.umd.min.js` | [jsPDF](https://github.com/parallax/jsPDF) 2.5.1 (MIT licence, see `vendor/jspdf.LICENSE.txt`), kept here so PDF export works offline |
 
 The installed app shows its saved copy immediately and fetches any update in the background, so changes appear the next time it opens. Bumping `VERSION` in `sw.js` makes installed copies download everything fresh.
+
+The Playfair Display, Josefin Sans, Caveat and Amatic SC files in `vendor/fonts` are under the SIL Open Font License; each font's licence sits beside it.

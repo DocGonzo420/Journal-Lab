@@ -218,18 +218,34 @@ const ALL_PRESETS = PRESETS.flatMap(g => g.items);
 const presetLabel = k => (ALL_PRESETS.find(p => p.k === k) || {}).l || '';
 
 const TEMPLATES = [
-  {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lined', l:'Ruled lines'},
+  {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lgrid', l:'Corner grid (L marks)'}, {v:'lined', l:'Ruled lines'},
   {v:'cornell', l:'Cornell notes'}, {v:'checklist', l:'Checklist'},
   {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'monthly', l:'Monthly calendar'},
-  {v:'habit', l:'Habit tracker'}, {v:'tracker', l:'Tracker or log'}, {v:'blank', l:'Blank'}
+  {v:'habit', l:'Habit tracker'}, {v:'tracker', l:'Tracker or log'}, {v:'title', l:'Title page'}, {v:'blank', l:'Blank'}
 ];
 const tplName = v => (TEMPLATES.find(t => t.v === v) || {}).l || v;
-const SP_KEYS = ['dots','grid','lined','cornell','checklist','habit','tracker'];
+/* Fonts. Helvetica, Times and Courier are built into PDFs; the others are open
+   fonts (SIL Open Font License) loaded the first time they are picked. wf is a
+   rough average letter width, used only to wrap long title page lines. */
+const FONTS = {
+  helvetica:{l:'Helvetica (clean sans)', css:'Helvetica,Arial,sans-serif', pdf:'helvetica', wf:0.56},
+  times:{l:'Times (classic serif)', css:'"Times New Roman",Times,serif', pdf:'times', wf:0.5},
+  courier:{l:'Courier (typewriter)', css:'"Courier New",Courier,monospace', pdf:'courier', wf:0.6},
+  playfair:{l:'Playfair Display (elegant serif)', css:'"JL Playfair Display",Georgia,serif', file:'PlayfairDisplay', pkg:'playfair-display', wf:0.56},
+  josefin:{l:'Josefin Sans (geometric)', css:'"JL Josefin Sans",Futura,sans-serif', file:'JosefinSans', pkg:'josefin-sans', wf:0.52},
+  caveat:{l:'Caveat (handwriting)', css:'"JL Caveat",cursive', file:'Caveat', pkg:'caveat', wf:0.42},
+  amatic:{l:'Amatic SC (hand-drawn capitals)', css:'"JL Amatic SC",cursive', file:'AmaticSC', pkg:'amatic-sc', wf:0.34}
+};
+const fontURL = (f,w) => 'vendor/fonts/'+f.file+'_'+w+'.ttf';
+const SP_KEYS = ['dots','grid','lgrid','lined','cornell','checklist','habit','tracker'];
 
 const DEFAULTS = {
   w:148, h:210, preset:'a5', unit:'mm',
   tpl:'dots',
-  spacings:{dots:5, grid:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
+  spacings:{dots:5, grid:5, lgrid:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
+  lgArm:60, lgShape:'l',
+  tpTitle:'My Journal', tpSub:'', tpLine:'', tpV:'center', tpAlign:'center', tpSize:32, tpSubSize:13,
+  tpCase:'normal', tpBold:true, tpRule:'line', tpRulePos:'between', tpRuleW:'short', tpFrame:'none', tpFields:'none',
   weight:0.4, intensity:70, color:'#6b7280',
   marginLine:false,
   cueW:45, summaryH:40, cornellLines:true, cornellLabels:true,
@@ -243,9 +259,10 @@ const DEFAULTS = {
   dated:false, startDate:'', monthCal:true, monthFill:true,
   holes:'none', holeEdge:7,
   duplex:false, calFL:20, calFT:20, calBL:20, calBT:20,
+  headFont:'helvetica', textFont:'helvetica',
   mix:false, parts:[{tpl:'monthly', n:1}, {tpl:'daily', n:7}, {tpl:'dots', n:4}]
 };
-const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill','duplex','mix'];
+const BOOLS = ['marginLine','cornellLines','cornellLabels','halfHours','hour24','priorities','dailyNotes','mirror','dateField','cutMarks','fill','spread','booklet','bleedOn','shareCuts','dated','monthCal','monthFill','duplex','mix','tpBold'];
 
 function num(v,d,min,max){ v = +v; if(!isFinite(v)) v = d; return clamp(v,min,max); }
 
@@ -267,6 +284,15 @@ function sanitize(s){
   s.headerNote = String(s.headerNote || '').slice(0,60);
   s.pageNumPlace = s.pageNumPlace === 'header' ? 'header' : 'footer';
   if(!['mood','reading','log'].includes(s.trackKind)) s.trackKind = 'mood';
+  s.lgArm = Math.round(num(s.lgArm,60,15,100)); s.lgShape = s.lgShape === 'cross' ? 'cross' : 'l';
+  for(const k of ['tpTitle','tpSub','tpLine']) s[k] = String(s[k] == null ? DEFAULTS[k] : s[k]).slice(0,60);
+  s.tpSize = num(s.tpSize,32,10,96); s.tpSubSize = num(s.tpSubSize,13,6,48);
+  const pick = (k,list) => { if(!list.includes(s[k])) s[k] = DEFAULTS[k]; };
+  pick('tpV',['top','upper','center','lower','bottom']); pick('tpAlign',['left','center','right']);
+  pick('tpCase',['normal','upper','spaced']); pick('tpRule',['none','line','double','thickthin','dots','diamond']);
+  pick('tpRulePos',['between','below','above','both']); pick('tpRuleW',['short','full']);
+  pick('tpFrame',['none','single','double','corners']); pick('tpFields',['none','name','dates','both']);
+  if(!FONTS[s.headFont]) s.headFont = 'helvetica'; if(!FONTS[s.textFont]) s.textFont = 'helvetica';
   s.parts = (Array.isArray(s.parts) ? s.parts : []).filter(pt => pt && typeof pt === 'object').slice(0,12)
     .map(pt => ({tpl: TEMPLATES.some(t => t.v === pt.tpl) ? pt.tpl : 'dots', n: Math.round(num(pt.n,1,1,200))}));
   if(!s.parts.length) s.parts = clone(DEFAULTS.parts);
@@ -323,7 +349,7 @@ const dotRadius = w => 0.1 + w*0.32;
 
 /* Bleed: dot grid, square grid and ruled patterns can fill the page and run
    past its edges, so a slightly-off cut still looks clean. */
-const BLEED_TPLS = ['dots','grid','lined'];
+const BLEED_TPLS = ['dots','grid','lgrid','lined'];
 /* Mixed pages: one PDF made of parts, each a run of pages of one type. */
 const uses = (s,t) => s.mix ? s.parts.some(pt => pt.tpl === t) : s.tpl === t;
 const bleedTpl = s => s.mix ? s.parts.some(pt => BLEED_TPLS.includes(pt.tpl)) : BLEED_TPLS.includes(s.tpl);
@@ -514,6 +540,27 @@ const TPL = {
     for(let j=0;j<rows;j++) C.ops.push(L(ox, oy+j*sp, x2, oy+j*sp, C.lw, C.line));
   },
 
+  /* Corner grid: each square drawn as an L (its left and bottom sides), or a small
+     cross at each grid point. Arm length is a share of the square; at 100% the
+     L marks join into a grid with open top and right edges. */
+  lgrid(s,B,C){
+    const sp = spacing(s);
+    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const a = sp*s.lgArm/100;
+    if(s.lgShape === 'cross'){
+      const h = a/2;
+      for(let j=0;j<rows;j++) for(let i=0;i<cols;i++){
+        const x = ox+i*sp, y = oy+j*sp;
+        C.ops.push(L(x-h, y, x+h, y, C.lw, C.line), L(x, y-h, x, y+h, C.lw, C.line));
+      }
+      return;
+    }
+    for(let j=1;j<rows;j++) for(let i=0;i<cols-1;i++){
+      const x = ox+i*sp, y = oy+j*sp;
+      C.ops.push(L(x, y, x, y-a, C.lw, C.line), L(x, y, x+a, y, C.lw, C.line));
+    }
+  },
+
   lined(s,B,C){
     const sp = spacing(s);
     let y0 = B.y + sp, n = Math.floor(B.h/sp + 1e-9);
@@ -624,6 +671,85 @@ const TPL = {
     }
   },
 
+  /* Title page: up to three lines of text placed on the page, with dividers,
+     a frame and fill-in lines. Its text uses the header font. */
+  title(s,B,C){
+    const font = FONTS[s.headFont] || FONTS.helvetica;
+    const fmt = t => s.tpCase === 'normal' ? t : s.tpCase === 'upper' ? t.toUpperCase()
+      : t.toUpperCase().split(' ').map(w => w.split('').join(' ')).join('   ');
+    const HT = (x,y,str,size,c,a,b) => Object.assign(T(x,y,str,size,c,a,b), {f:'@head'});
+    // Frame first, so the text block sits inside it.
+    const ink = C.ink, rl = C.lw*1.4;
+    if(s.tpFrame === 'single' || s.tpFrame === 'double'){
+      C.ops.push(RC(B.x, B.y, B.w, B.h, rl, C.line));
+      if(s.tpFrame === 'double') C.ops.push(RC(B.x+1.6, B.y+1.6, B.w-3.2, B.h-3.2, C.lw, C.line));
+    } else if(s.tpFrame === 'corners'){
+      const k = Math.min(14, B.w*0.15, B.h*0.15);
+      for(const [cx,cy,dx,dy] of [[B.x,B.y,1,1],[B.x+B.w,B.y,-1,1],[B.x,B.y+B.h,1,-1],[B.x+B.w,B.y+B.h,-1,-1]])
+        C.ops.push(L(cx, cy, cx+dx*k, cy, rl, C.line), L(cx, cy, cx, cy+dy*k, rl, C.line));
+    }
+    const pad = s.tpFrame === 'none' ? 0 : 8;
+    const X = {x:B.x+pad, y:B.y+pad, w:Math.max(10, B.w-2*pad), h:Math.max(10, B.h-2*pad)};
+    // Fill-in lines at the foot of the page.
+    const fields = [];
+    if(s.tpFields === 'name' || s.tpFields === 'both') fields.push(['Name']);
+    if(s.tpFields === 'dates' || s.tpFields === 'both') fields.push(['From','To']);
+    const fh = fields.length*9, fy0 = X.y + X.h - fh;
+    fields.forEach((row,r) => {
+      const y = fy0 + r*9 + 7, cw = X.w/row.length;
+      row.forEach((lab,k) => {
+        const x0 = X.x + k*cw, lx = x0 + Math.max(lab.length*8*PT*0.6, 6) + 2;
+        C.ops.push(Object.assign(T(x0, y, lab, 8, C.mute), {f:'@head'}));
+        C.ops.push(L(lx, y+0.6, x0 + cw - (k < row.length-1 ? 4 : 0), y+0.6, C.lw, C.line));
+      });
+    });
+    // Wrap the title to the width, at most three lines.
+    const em = sz => sz*PT*font.wf;
+    let size = s.tpSize;
+    // Wrap by words, measuring each line as it will print (capitals, spacing).
+    const wrap = (t,sz,maxW) => {
+      const out = [];
+      for(const w of t.split(/\s+/)){
+        const cand = out.length ? out[out.length-1]+' '+w : w;
+        if(out.length && fmt(cand).length*em(sz) > maxW) out.push(w); else if(out.length) out[out.length-1] = cand; else out.push(w);
+      }
+      return out.map(fmt);
+    };
+    const title = s.tpTitle.trim(), sub = fmt(s.tpSub.trim()), extra = s.tpLine.trim();
+    let tl = title ? wrap(title, size, X.w) : [];
+    while(tl.length > 3 || tl.some(l => l.length*em(size) > X.w)){ size *= 0.92; tl = wrap(title, size, X.w); if(size < 10) break; }
+    const th = size*PT*1.18, sh = s.tpSubSize*PT*1.45, eh = s.tpSubSize*0.8*PT*1.5, ruleH = s.tpRule === 'none' ? 0 : 7;
+    const pos = s.tpRulePos;
+    const above = ruleH && (pos === 'above' || pos === 'both'), between = ruleH && pos === 'between' && (sub || extra),
+          below = ruleH && (pos === 'below' || pos === 'both' || (pos === 'between' && !sub && !extra));
+    const blockH = (above ? ruleH : 0) + tl.length*th + (between ? ruleH : 2) + (sub ? sh : 0) + (extra ? eh : 0) + (below ? ruleH : 0);
+    const room = X.h - (fh ? fh + 6 : 0);
+    const frac = {top:0, upper:0.3, center:0.5, lower:0.7, bottom:1}[s.tpV];
+    let y = X.y + clamp(room*frac - blockH*frac, 0, Math.max(0, room - blockH));
+    const ax = s.tpAlign === 'left' ? X.x : s.tpAlign === 'right' ? X.x + X.w : X.x + X.w/2;
+    const al = s.tpAlign === 'left' ? 'l' : s.tpAlign === 'right' ? 'r' : 'c';
+    const rw = s.tpRuleW === 'full' ? X.w : Math.min(X.w, Math.max(30, X.w*0.4));
+    const rx = s.tpAlign === 'left' ? X.x : s.tpAlign === 'right' ? X.x + X.w - rw : X.x + (X.w - rw)/2;
+    const rule = yy => {
+      const st = s.tpRule, x1 = rx, x2 = rx + rw, mid = rx + rw/2;
+      if(st === 'line') C.ops.push(L(x1, yy, x2, yy, rl, C.line));
+      else if(st === 'double') C.ops.push(L(x1, yy-0.7, x2, yy-0.7, C.lw, C.line), L(x1, yy+0.7, x2, yy+0.7, C.lw, C.line));
+      else if(st === 'thickthin') C.ops.push(L(x1, yy-0.6, x2, yy-0.6, rl*2.2, C.line), L(x1, yy+0.9, x2, yy+0.9, C.lw, C.line));
+      else if(st === 'dots'){ const n = Math.max(3, Math.floor(rw/3)); for(let i=0;i<=n;i++) C.ops.push(D(x1 + i*rw/n, yy, Math.max(0.25, rl*0.6), C.line)); }
+      else if(st === 'diamond'){
+        const d = 1.8;
+        C.ops.push(L(x1, yy, mid-d-1.2, yy, rl, C.line), L(mid+d+1.2, yy, x2, yy, rl, C.line));
+        C.ops.push(L(mid-d, yy, mid, yy-d, rl, C.line), L(mid, yy-d, mid+d, yy, rl, C.line), L(mid+d, yy, mid, yy+d, rl, C.line), L(mid, yy+d, mid-d, yy, rl, C.line));
+      }
+    };
+    if(above){ rule(y + ruleH/2); y += ruleH; }
+    for(const l of tl){ y += th; C.ops.push(HT(ax, y - th*0.22, l, size, ink, al, s.tpBold)); }
+    if(between){ rule(y + ruleH/2); y += ruleH; } else y += 2;
+    if(sub){ y += sh; C.ops.push(HT(ax, y - sh*0.3, sub, s.tpSubSize, C.mute, al)); }
+    if(extra){ y += eh; C.ops.push(HT(ax, y - eh*0.3, extra, s.tpSubSize*0.8, C.mute, al)); }
+    if(below){ rule(y + ruleH/2); y += ruleH; }
+  },
+
   /* Habit tracker: a habit on each row, a box for every day of the month. */
   habit(s,B,C,p,info){
     let y = B.y;
@@ -717,7 +843,9 @@ function buildPage(s,p,opt){
   const title = sub(s.title), note = sub(s.headerNote), head = info.label || '';
   const numHead = s.pageNums !== 'none' && s.pageNumPlace === 'header';
   const numRight = s.pageNums === 'outer' ? R.innerLeft : !R.innerLeft;
-  const band = !!(title || s.dateField || head || note || numHead);
+  const isTitle = info.tpl === 'title';
+  const band = !isTitle && !!(title || s.dateField || head || note || numHead);
+  const headStart = ops.length;
   if(band){
     const hh = Math.max(9, s.titleSize*PT*1.9 + 2), base = R.y + hh - 3.2;
     // A dated page leads with its date; a page title moves to the right in small type.
@@ -739,6 +867,7 @@ function buildPage(s,p,opt){
     }
     if(numOp) ops.push(numOp);
     ops.push(L(R.x, R.y+hh-1.2, R.x+R.w, R.y+hh-1.2, C.lw, C.line));
+    for(let i=headStart; i<ops.length; i++) if(ops[i].k === 't') ops[i].f = '@head';
     B = {x:R.x, y:R.y+hh, w:R.w, h:Math.max(1, R.h-hh)};
   }
   const bl = bleedOf(t);
@@ -771,12 +900,17 @@ function buildPage(s,p,opt){
       ops.push(L(x, 0, x, s.h, hw, hc, [1,1.5]));
     }
   }
-  if(s.pageNums !== 'none' && !numHead){
+  if(s.pageNums !== 'none' && !numHead && !isTitle){
     const yb = s.h - clamp(s.mb/2, 3, 8) + 1;
     if(s.pageNums === 'center') ops.push(T(s.w/2, yb, num, 8, C.ink, 'c'));
     else ops.push(T(numRight ? R.x+R.w : R.x, yb, num, 8, C.ink, numRight ? 'r' : 'l'));
   }
   if(opt.guides) ops.push(RC(R.x, R.y, R.w, R.h, 0.18, '#3b82f6', [1.2,1.2]));
+  // Fonts: header text and title pages use the header font, everything else the text font.
+  for(const o of ops) if(o.k === 't'){
+    const k = o.f === '@head' ? s.headFont : s.textFont;
+    if(k && k !== 'helvetica') o.f = k; else delete o.f;
+  }
   return ops;
 }
 
@@ -851,7 +985,7 @@ function place(ops,tx,ty,sc,out){
       case 'd': out.push({k:'d',x:tx+o.x*sc,y:ty+o.y*sc,r:o.r*sc,c:o.c}); break;
       case 'r': out.push({k:'r',x:tx+o.x*sc,y:ty+o.y*sc,w:o.w*sc,h:o.h*sc,lw:o.lw*sc,c:o.c,dash:o.dash}); break;
       case 'o': out.push({k:'o',x:tx+o.x*sc,y:ty+o.y*sc,r:o.r*sc,lw:o.lw*sc,c:o.c}); break;
-      case 't': out.push({k:'t',x:tx+o.x*sc,y:ty+o.y*sc,s:o.s,size:o.size*sc,c:o.c,a:o.a,b:o.b}); break;
+      case 't': out.push({k:'t',x:tx+o.x*sc,y:ty+o.y*sc,s:o.s,size:o.size*sc,c:o.c,a:o.a,b:o.b,f:o.f}); break;
     }
   }
 }
@@ -914,7 +1048,7 @@ function toSVG(ops,w,h){
     } else if(o.k === 'o'){
       shapes += '<circle cx="'+f3(o.x)+'" cy="'+f3(o.y)+'" r="'+f3(o.r)+'" fill="none" stroke="'+o.c+'" stroke-width="'+f3(o.lw)+'"/>';
     } else if(o.k === 't'){
-      shapes += '<text x="'+f3(o.x)+'" y="'+f3(o.y)+'" font-size="'+f3(o.size*PT)+'" font-family="Helvetica,Arial,sans-serif" font-weight="'+(o.b?700:400)+'" fill="'+o.c+'" text-anchor="'+(o.a==='c'?'middle':o.a==='r'?'end':'start')+'">'+esc(o.s)+'</text>';
+      shapes += '<text x="'+f3(o.x)+'" y="'+f3(o.y)+'" font-size="'+f3(o.size*PT)+'" font-family=\''+(FONTS[o.f] || FONTS.helvetica).css+'\' font-weight="'+(o.b?700:400)+'" fill="'+o.c+'" text-anchor="'+(o.a==='c'?'middle':o.a==='r'?'end':'start')+'">'+esc(o.s)+'</text>';
     }
   }
   let body = '<rect width="'+f3(w)+'" height="'+f3(h)+'" fill="#fff"/>';
@@ -949,17 +1083,72 @@ function drawOps(doc,ops){
     else if(o.k === 'o'){ stroke(o.c,o.lw,null); doc.circle(o.x,o.y,o.r,'S'); }
     else if(o.k === 't'){
       const [r,g,b] = hexToRgb(o.c);
-      doc.setFont('helvetica', o.b ? 'bold' : 'normal'); doc.setFontSize(o.size); doc.setTextColor(r,g,b);
+      doc.setFont(pdfFont(doc, o.f), o.b ? 'bold' : 'normal'); doc.setFontSize(o.size); doc.setTextColor(r,g,b);
       doc.text(clean(o.s), o.x, o.y, {align: o.a==='c' ? 'center' : o.a==='r' ? 'right' : 'left'});
     }
   }
   doc.setLineDashPattern([],0);
 }
 
+/* The PDF name of a font: built-in ones by name, loaded ones once added to this
+   document, anything that failed to load falls back to Helvetica. */
+function pdfFont(doc,k){
+  const f = FONTS[k];
+  if(!f) return 'helvetica';
+  if(f.pdf) return f.pdf;
+  return doc.__jl && doc.__jl[k] ? 'jl-'+k : 'helvetica';
+}
+const FONT_DATA = {}, FONT_WAIT = {};
+function b64(buf){
+  const u = new Uint8Array(buf); let bin = '';
+  for(let i=0; i<u.length; i+=0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i+0x8000));
+  return btoa(bin);
+}
+/* Fetch a font's regular and bold files once, for both the preview and the PDF. */
+function loadFont(k){
+  const f = FONTS[k];
+  if(!f || !f.file) return Promise.resolve(true);
+  if(FONT_DATA[k]) return Promise.resolve(true);
+  if(!FONT_WAIT[k]) FONT_WAIT[k] = Promise.resolve().then(() => Promise.all(['400Regular','700Bold'].map(w =>
+      fetch(fontURL(f,w)).then(r => { if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }))))
+    .then(([reg, bold]) => {
+      FONT_DATA[k] = {reg:b64(reg), bold:b64(bold)};
+      try{
+        if(typeof FontFace === 'function' && document.fonts){
+          const fam = f.css.split(',')[0].replace(/"/g,'');
+          document.fonts.add(new FontFace(fam, reg, {weight:'400'}));
+          document.fonts.add(new FontFace(fam, bold, {weight:'700'}));
+        }
+      }catch(e){ console.warn('Preview font', e); }
+      return true;
+    })
+    .catch(e => { console.warn('Font', k, e); delete FONT_WAIT[k]; return false; });
+  return FONT_WAIT[k];
+}
+const fontsOf = s => [...new Set([s.headFont, s.textFont])].filter(k => FONTS[k] && FONTS[k].file);
+let fontWarned = {};
+function fontsForPreview(){
+  for(const k of fontsOf(S)) if(!FONT_DATA[k]) loadFont(k).then(ok => {
+    if(ok) update();
+    else if(!fontWarned[k]){ fontWarned[k] = true; toast(FONTS[k].l.split(' (')[0]+' could not load, so pages use Helvetica for now'); }
+  });
+}
+function addFonts(doc,s){
+  doc.__jl = {};
+  for(const k of fontsOf(s)){
+    const d = FONT_DATA[k]; if(!d) continue;
+    try{
+      doc.addFileToVFS('jl-'+k+'.ttf', d.reg); doc.addFont('jl-'+k+'.ttf', 'jl-'+k, 'normal');
+      doc.addFileToVFS('jl-'+k+'-b.ttf', d.bold); doc.addFont('jl-'+k+'-b.ttf', 'jl-'+k, 'bold');
+      doc.__jl[k] = true;
+    }catch(e){ console.warn('Font', k, e); }
+  }
+}
 async function makePDF(s,onProgress){
   const pl = plan(s), JS = window.jspdf.jsPDF;
   const fmt = [Math.min(pl.sw,pl.sh), Math.max(pl.sw,pl.sh)], ori = pl.landscape ? 'landscape' : 'portrait';
   const doc = new JS({unit:'mm', format:fmt, orientation:ori, compress:true});
+  if(fontsOf(s).length){ await Promise.all(fontsOf(s).map(loadFont)); addFonts(doc,s); }
   doc.setProperties({title:'Journal pages', creator:'Journal Lab'});
   for(let i=1;i<=pl.sheets;i++){
     if(i > 1) doc.addPage(fmt, ori);
@@ -1008,7 +1197,7 @@ const shareLink = s => shareBase() + '#s=' + encodeShare(shareData(s));
 
 /* Exposed so the layout engine can be tested without a browser. */
 if(typeof window !== 'undefined'){
-  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift, shareData, encodeShare, decodeShare, shareLink, partAt};
+  window.PJG = {DEFAULTS, merge, diff, plan, buildPage, buildPiece, buildSheet, toSVG, contentRect, bookletSide, pageInfo, pageCount, holeYs, holeZone, buildTestSheet, calShift, shareData, encodeShare, decodeShare, shareLink, partAt, FONTS, makePDF};
 }
 if(typeof document === 'undefined') return;
 
@@ -1066,8 +1255,8 @@ function matchPreset(){
 }
 
 const SPACE_TPLS = SP_KEYS;
-const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height', habit:'Row height', tracker:'Row height'};
-const MIX_SP_LABEL = {dots:'Dot spacing', grid:'Square size', lined:'Ruled line spacing', cornell:'Cornell line spacing', checklist:'Checklist row height', habit:'Habit row height', tracker:'Log row height'};
+const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height', habit:'Row height', tracker:'Row height'};
+const MIX_SP_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Corner grid square size', lined:'Ruled line spacing', cornell:'Cornell line spacing', checklist:'Checklist row height', habit:'Habit row height', tracker:'Log row height'};
 const hasSpacing = (s,t) => SPACE_TPLS.includes(t) && !(t === 'tracker' && s.trackKind === 'mood');
 const COLORS = [['#6b7280','Graphite'],['#a3a9b4','Silver'],['#3b6ea8','Blue'],['#2f7d5b','Green'],['#a8642a','Copper'],['#111827','Black']];
 
@@ -1096,6 +1285,24 @@ const SECTIONS = [
       fmt:s=>s.tpl==='dots'&&!s.mix?(2*dotRadius(s.weight)).toFixed(2)+' mm':s.weight.toFixed(2)+' pt', show:s=>s.mix||s.tpl!=='blank'},
     {id:'intensity', t:'range', label:'Darkness', key:'intensity', min:10, max:100, step:5, fmt:s=>s.intensity+'%'},
     {id:'color', t:'color', label:'Ink colour', key:'color'},
+    {id:'lgShape', t:'seg', label:'Mark shape', opts:[['l','L corners'],['cross','Crosses']], key:'lgShape', show:s=>uses(s,'lgrid')},
+    {id:'lgArm', t:'range', label:'Mark length', key:'lgArm', min:15, max:100, step:5, fmt:s=>s.lgArm+'% of a square', show:s=>uses(s,'lgrid')},
+    {id:'lgHint', t:'hint', text:s=>s.lgShape === 'cross' ? 'A small cross at every grid point, a lighter alternative to a full grid.' : 'Each square is marked by its left and bottom sides only, as an L. At 100% the marks join into a grid with open top and right edges.', show:s=>uses(s,'lgrid')},
+    {id:'tpTitle', t:'text', label:'Title', key:'tpTitle', placeholder:'e.g. My Journal', show:s=>uses(s,'title')},
+    {id:'tpSub', t:'text', label:'Subtitle', key:'tpSub', placeholder:'Optional, e.g. Field notes', show:s=>uses(s,'title')},
+    {id:'tpLine', t:'text', label:'Third line', key:'tpLine', placeholder:'Optional, e.g. Volume 1 or 2027', show:s=>uses(s,'title')},
+    {id:'tpSize', t:'num', label:'Title size (pt)', key:'tpSize', min:10, max:96, show:s=>uses(s,'title')},
+    {id:'tpSubSize', t:'num', label:'Subtitle size (pt)', key:'tpSubSize', min:6, max:48, show:s=>uses(s,'title')},
+    {id:'tpV', t:'select', label:'Where on the page', opts:[['top','Top'],['upper','Upper third'],['center','Centre'],['lower','Lower third'],['bottom','Bottom']], key:'tpV', show:s=>uses(s,'title')},
+    {id:'tpAlign', t:'seg', label:'Align', opts:[['left','Left'],['center','Centre'],['right','Right']], key:'tpAlign', show:s=>uses(s,'title')},
+    {id:'tpCase', t:'select', label:'Title style', opts:[['normal','As typed'],['upper','CAPITALS'],['spaced','S P A C E D  capitals']], key:'tpCase', show:s=>uses(s,'title')},
+    {id:'tpBold', t:'check', label:'Bold title', key:'tpBold', show:s=>uses(s,'title')},
+    {id:'tpRule', t:'select', label:'Divider', opts:[['none','None'],['line','Single line'],['double','Double line'],['thickthin','Thick and thin'],['dots','Dotted'],['diamond','Line with a diamond']], key:'tpRule', show:s=>uses(s,'title')},
+    {id:'tpRulePos', t:'select', label:'Divider goes', opts:[['between','Between title and subtitle'],['below','Below the text'],['above','Above the title'],['both','Above and below']], key:'tpRulePos', show:s=>uses(s,'title') && s.tpRule !== 'none'},
+    {id:'tpRuleW', t:'seg', label:'Divider width', opts:[['short','Short'],['full','Full width']], key:'tpRuleW', show:s=>uses(s,'title') && s.tpRule !== 'none'},
+    {id:'tpFrame', t:'select', label:'Frame', opts:[['none','None'],['single','Single border'],['double','Double border'],['corners','Corner brackets']], key:'tpFrame', show:s=>uses(s,'title')},
+    {id:'tpFields', t:'select', label:'Fill-in lines at the bottom', opts:[['none','None'],['name','Name'],['dates','From and to dates'],['both','Name and dates']], key:'tpFields', show:s=>uses(s,'title')},
+    {id:'tpHint', t:'hint', text:'The title page uses the header font from the Fonts section and the ink colour above. It has no header or page number, but it still counts as a page. Tick Mix page types to put it in front of other pages.', show:s=>uses(s,'title')},
     {id:'marginLine', t:'check', label:'Vertical margin line', key:'marginLine', show:s=>uses(s,'lined')},
     {id:'cueW', t:'len', label:'Cue column', key:'cueW', min:15, max:120, show:s=>uses(s,'cornell')},
     {id:'summaryH', t:'len', label:'Summary height', key:'summaryH', min:15, max:120, show:s=>uses(s,'cornell')},
@@ -1131,6 +1338,11 @@ const SECTIONS = [
     {id:'holeEdge', t:'len', label:'Hole centre from the edge', key:'holeEdge', min:4, max:15, show:s=>!!holesOf(s) && !!holesOf(s).gaps},
     {id:'holesHint', t:'hint', text:holesHint, show:s=>!!holesOf(s)},
     {id:'holesSpread', t:'hint', text:'Ring holes are off while booklet spreads are on.', show:s=>s.spread && s.holes !== 'none'}
+  ]},
+  {t:'Fonts', c:[
+    {id:'headFont', t:'select', label:'Header and title font', opts:Object.keys(FONTS).map(k => [k, FONTS[k].l]), key:'headFont'},
+    {id:'textFont', t:'select', label:'Labels and page numbers font', opts:Object.keys(FONTS).map(k => [k, FONTS[k].l]), key:'textFont'},
+    {id:'fontHint', t:'hint', text:'Helvetica, Times and Courier are built into every PDF. The other fonts download the first time you pick them, then work offline.'}
   ]},
   {t:'Header and footer', c:[
     {id:'title', t:'text', label:'Header text', key:'title', placeholder:'Optional, e.g. Notes or Page {n}'},
@@ -1522,7 +1734,7 @@ function applyJson(){
 
 /* ---------- preview ---------- */
 let raf = 0, cur = null;
-function update(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(render); persist(); }
+function update(){ fontsForPreview(); cancelAnimationFrame(raf); raf = requestAnimationFrame(render); persist(); }
 
 function fitStage(){
   const st = $('#stage'), svg = st.firstElementChild;

@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cover Lab</title>
+<meta name="description" content="Make generative abstract art covers for notebooks at real print sizes, and save them as PNG or PDF.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#e9ebe6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141816" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cover Lab">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=DM+Serif+Display&family=Instrument+Sans:wght@400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: the sheet is the hero. It stays pinned (top on phones, left on desktop) while a single column of controls scrolls past it. */
+:root{
+  --bg:#e9ebe6; --panel:#f6f7f3; --stage:#d8dbd4; --ink:#18201d; --muted:#5d6964; --line:#cbd0c8;
+  --accent:#1f4fd8; --accent-ink:#ffffff;
+  --display:"Bricolage Grotesque",system-ui,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141816; --panel:#1c2220; --stage:#0d100f; --ink:#e8ece7; --muted:#96a29c; --line:#2f3934;
+    --accent:#8fb0ff; --accent-ink:#0c1533; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141816; --panel:#1c2220; --stage:#0d100f; --ink:#e8ece7; --muted:#96a29c; --line:#2f3934;
+  --accent:#8fb0ff; --accent-ink:#0c1533; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:flex;flex-direction:column;min-height:100%}
+.stage{position:sticky;top:0;z-index:5;background:var(--stage);border-bottom:1px solid var(--line);padding:12px 16px 10px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.stagebar{width:100%;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+h1{font:600 20px/1 var(--display);margin:0;letter-spacing:-.01em}
+.dims{font:400 11px/1.3 var(--mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+#fit{width:100%;display:flex;justify-content:center;align-items:center}
+#sheet{position:relative;box-shadow:0 1px 2px rgba(0,0,0,.25),0 10px 28px rgba(0,0,0,.22);background:#fff}
+#sheet canvas{display:block;width:100%;height:100%}
+.guide{position:absolute;pointer-events:none}
+.guide.trim{border:1px dashed rgba(255,255,255,.9);mix-blend-mode:difference}
+.guide.fold{top:0;bottom:0;left:50%;border-left:1px dashed rgba(255,255,255,.9);mix-blend-mode:difference}
+.sides{width:100%;display:flex;justify-content:space-around;font:400 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+.controls{padding:16px;display:flex;flex-direction:column;gap:14px;max-width:560px;width:100%;margin:0 auto}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+h2{font:600 12px/1 var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:8px;padding:10px 6px;cursor:pointer;font-weight:500;text-align:center}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn{border:1px solid var(--line);background:transparent;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.grow{flex:1 1 0;min-width:120px}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.thumb{padding:0;border:2px solid transparent;border-radius:6px;background:none;cursor:pointer;overflow:hidden;line-height:0}
+.thumb canvas{width:100%;height:auto;display:block;border-radius:3px}
+.thumb[aria-pressed="true"]{border-color:var(--accent)}
+.pals{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pal{border:1px solid var(--line);border-radius:8px;padding:5px;background:transparent;cursor:pointer;display:flex;flex-direction:column;gap:5px;align-items:stretch;min-width:0}
+.pal span.sw{display:flex;height:22px;border-radius:4px;overflow:hidden}
+.pal span.sw i{flex:1}
+.pal span.nm{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.mix{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.mix label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--muted);text-align:center;min-width:0}
+.mix input[type=color]{width:100%;height:36px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer}
+.slider{display:grid;grid-template-columns:92px 1fr;align-items:center;gap:10px}
+.slider label{font-size:13px}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:28px}
+.field{display:flex;flex-direction:column;gap:4px;flex:1 1 130px;min-width:0}
+section>.field{flex:none}
+.field>span{font-size:12px;color:var(--muted)}
+select,input[type=text],input[type=number]{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;min-height:40px}
+input.seed{font-family:var(--mono)}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+#status{font-size:13px;color:var(--muted);min-height:1.4em;margin:0}
+[hidden]{display:none!important}
+
+#over{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;color:#fff;text-align:center}
+#over img{max-width:100%;max-height:70vh;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#over .btn{border-color:#fff;color:#fff}
+
+@media (min-width:900px){
+  .app{flex-direction:row;align-items:flex-start}
+  .stage{flex:1 1 auto;height:100vh;border-bottom:0;border-right:1px solid var(--line);padding:20px 28px;justify-content:flex-start}
+  #fit{flex:1}
+  .controls{flex:0 0 420px;margin:0;padding:20px}
+  h1{font-size:24px}
+}
+@media (prefers-reduced-motion:no-preference){.chip,.btn,.pal{transition:background .12s,border-color .12s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="stagebar">
+      <h1>Cover Lab</h1>
+      <div class="dims" id="dims"></div>
+    </div>
+    <div id="fit">
+      <div id="sheet">
+        <canvas id="main" aria-label="Cover preview"></canvas>
+        <div class="guide trim" id="gTrim" hidden></div>
+        <div class="guide fold" id="gFold" hidden></div>
+      </div>
+    </div>
+    <div class="sides" id="sides" hidden><span>Back</span><span>Front</span></div>
+  </div>
+
+  <div class="controls">
+    <section>
+      <h2>Style</h2>
+      <div class="chips" id="styles"></div>
+      <div class="row">
+        <button class="btn primary grow" id="shuffle" type="button">New variations</button>
+        <button class="btn grow" id="surprise" type="button">Surprise me</button>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <label class="field"><span>Seed (same seed, same art)</span>
+        <input class="seed" id="seed" type="text" inputmode="text" autocomplete="off" spellcheck="false"></label>
+    </section>
+
+    <section>
+      <h2>Color</h2>
+      <div class="pals" id="pals"></div>
+      <div class="mix" id="mix"></div>
+      <div class="row"><button class="btn grow" id="rotate" type="button">Rotate colors</button></div>
+    </section>
+
+    <section>
+      <h2>Shape</h2>
+      <div class="slider"><label for="detail">Detail</label><input id="detail" type="range" min="0" max="1" step="0.01" data-k="detail"></div>
+      <div class="slider"><label for="scale">Scale</label><input id="scale" type="range" min="0" max="1" step="0.01" data-k="scale"></div>
+      <div class="slider"><label for="vary">Wildness</label><input id="vary" type="range" min="0" max="1" step="0.01" data-k="vary"></div>
+      <div class="slider"><label for="grain">Paper grain</label><input id="grain" type="range" min="0" max="1" step="0.01" data-k="grain"></div>
+    </section>
+
+    <section>
+      <h2>Notebook</h2>
+      <div class="row">
+        <label class="field"><span>Cover size</span><select id="size" data-k="size"></select></label>
+        <label class="field"><span>Layout</span><select id="wrap" data-k="wrap">
+          <option value="0">Front only</option><option value="1">Wraparound, back + front</option></select></label>
+      </div>
+      <div class="row" id="customRow" hidden>
+        <label class="field"><span>Width</span><input id="cw" type="number" step="0.01" min="1" data-k="cw"></label>
+        <label class="field"><span>Height</span><input id="ch" type="number" step="0.01" min="1" data-k="ch"></label>
+        <label class="field"><span>Unit</span><select id="unit" data-k="unit"><option value="in">inches</option><option value="mm">mm</option></select></label>
+      </div>
+      <div class="row">
+        <label class="field"><span>Bleed past the trim</span><select id="bleed" data-k="bleed">
+          <option value="0">None</option><option value="3">3 mm (about 1/8 in)</option><option value="5">5 mm</option></select></label>
+        <label class="check"><input id="guides" type="checkbox" data-k="guides"> Show fold and trim lines</label>
+      </div>
+      <p class="note">Guide lines only appear in the preview. They are never in the saved file.</p>
+    </section>
+
+    <section>
+      <h2>Label</h2>
+      <div class="row">
+        <label class="field"><span>Label</span><select id="label" data-k="label">
+          <option value="off">None</option><option value="plate">Plate</option><option value="band">Band</option></select></label>
+        <label class="field"><span>Lettering</span><select id="font" data-k="font">
+          <option value="grotesk">Grotesk</option><option value="serif">Serif</option><option value="mono">Mono</option></select></label>
+      </div>
+      <div class="row" id="labelText">
+        <label class="field"><span>Title (leave empty to hand-letter it)</span><input id="title" type="text" data-k="title" maxlength="40"></label>
+        <label class="field"><span>Small line</span><input id="sub" type="text" data-k="sub" maxlength="40"></label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Save</h2>
+      <div class="row">
+        <label class="field"><span>Print resolution</span><select id="dpi" data-k="dpi">
+          <option value="150">150 dpi, draft</option><option value="300">300 dpi, print</option><option value="600">600 dpi, fine</option></select></label>
+      </div>
+      <div class="row">
+        <button class="btn primary grow" id="savePng" type="button">Save PNG</button>
+        <button class="btn grow" id="savePdf" type="button">Save PDF</button>
+      </div>
+      <p class="note">Both files carry the real physical size, so printing at actual size (100%) comes out at the trim size plus any bleed.</p>
+      <div class="row" id="shareRow" hidden><button class="btn primary grow" id="btnShare" type="button">Save or print file</button></div>
+      <p id="status" role="status"></p>
+    </section>
+
+    <section id="installSec" hidden>
+      <h2>App</h2>
+      <p class="note">Add Cover Lab to your home screen so it opens like an app and works offline.</p>
+      <div class="row"><button class="btn grow" id="btnInstall" type="button">Install app</button></div>
+    </section>
+  </div>
+</div>
+
+<div id="over" hidden>
+  <p id="overMsg">Press and hold the image to save it.</p>
+  <img id="overImg" alt="Rendered cover">
+  <button class="btn" id="overClose" type="button">Close</button>
+</div>
+
+<script>
+"use strict";
+/* ---------- data ---------- */
+const STYLES=[["flow","Flow"],["blocks","Blocks"],["contours","Contours"],["layers","Layers"],["terrazzo","Terrazzo"],["orbits","Orbits"]];
+const PALETTES=[
+ ["Riso",["#f4efe6","#ff5a5f","#0078bf","#ffd23f","#00a95c","#2b2b2b"]],
+ ["Pine",["#f1ead9","#1f3d2b","#4f7a4a","#c8742c","#7a2e1e","#e2b65a"]],
+ ["Indigo",["#f2efe8","#1b2a49","#31527a","#6f93b8","#c9d6df","#d9793a"]],
+ ["Midnight",["#14161f","#f2c14e","#e4572e","#4d9de0","#e8e9eb","#7b5ea7"]],
+ ["Clay",["#ead9c7","#b5533c","#d98e5f","#5b6e5d","#2e3a3a","#f4ede1"]],
+ ["Ink",["#f5f3ee","#111111","#3a3a3a","#777777","#b5b1a8","#c0392b"]],
+ ["Chalk",["#1d2420","#e8e4d8","#9fb8a3","#d6a85a","#6c8f7d","#c96b4b"]],
+ ["Candy",["#fff4f0","#ff8fab","#ffc971","#8ecae6","#b8e0a8","#6d597a"]],
+ ["Ocean",["#0d2b3e","#1f6f8b","#5fb3b3","#f4e9cd","#f2a65a","#e85d4a"]],
+ ["Mustard",["#e9b44c","#1c1c1c","#f6f0e0","#9b2915","#50a2a7","#e4d6a7"]],
+ ["Plum",["#2a1a2e","#c84b6c","#f2a07b","#f6e7c1","#6a4c93","#3aa6a0"]],
+ ["Sage",["#dfe5d6","#55695a","#8ea58c","#f3efe2","#c98b5e","#2c3531"]]
+];
+// trim size of one cover, portrait, in mm
+const SIZES=[
+ ["pocket","Pocket, 4.25 × 5.5 in",107.95,139.7],
+ ["a5","A5, 148 × 210 mm",148,210],
+ ["a6","A6, 105 × 148 mm",105,148],
+ ["b6","B6, 125 × 176 mm",125,176],
+ ["tnr","Traveler's regular, 110 × 210 mm",110,210],
+ ["tnp","Traveler's passport, 89 × 124 mm",89,124],
+ ["half","Half letter, 5.5 × 8.5 in",139.7,215.9],
+ ["letter","Letter, 8.5 × 11 in",215.9,279.4],
+ ["custom","Custom size",0,0]
+];
+const FONTS={grotesk:['600','"Bricolage Grotesque",system-ui,sans-serif'],serif:['400','"DM Serif Display",Georgia,serif'],mono:['500','"JetBrains Mono",ui-monospace,monospace']};
+const MAX_PX=16e6;
+
+const state={style:"flow",colors:PALETTES[0][1].slice(),seed:"482913",detail:.5,scale:.5,vary:.45,grain:.3,
+  size:"pocket",cw:4.25,ch:5.5,unit:"in",wrap:"0",bleed:"0",guides:true,label:"off",font:"grotesk",title:"",sub:"",dpi:"300"};
+try{const s=JSON.parse(localStorage.getItem("coverlab")||"null");if(s&&typeof s==="object")for(const k in state)if(k in s&&typeof s[k]===typeof state[k])state[k]=s[k];
+  if(!Array.isArray(state.colors)||state.colors.length!==6)state.colors=PALETTES[0][1].slice();}catch(e){}
+function persist(){try{localStorage.setItem("coverlab",JSON.stringify(state))}catch(e){}}
+let thumbSeeds=[];
+
+/* ---------- random + noise ---------- */
+function hash(str){let h=2166136261;for(let i=0;i<str.length;i++)h=Math.imul(h^str.charCodeAt(i),16777619);return h>>>0}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function makeNoise(rnd){
+  const p=new Uint8Array(512),perm=[];for(let i=0;i<256;i++)perm[i]=i;
+  for(let i=255;i>0;i--){const j=Math.floor(rnd()*(i+1));const t=perm[i];perm[i]=perm[j];perm[j]=t}
+  for(let i=0;i<512;i++)p[i]=perm[i&255];
+  const GX=[1,-1,0,0,.7071,-.7071,.7071,-.7071],GY=[0,0,1,-1,.7071,.7071,-.7071,-.7071];
+  const fade=t=>t*t*t*(t*(t*6-15)+10);
+  return function(x,y){
+    const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,X=xi&255,Y=yi&255;
+    const a=p[p[X]+Y]&7,b=p[p[X+1]+Y]&7,c=p[p[X]+Y+1]&7,d=p[p[X+1]+Y+1]&7;
+    const u=fade(xf),v=fade(yf);
+    const n00=GX[a]*xf+GY[a]*yf,n10=GX[b]*(xf-1)+GY[b]*yf,n01=GX[c]*xf+GY[c]*(yf-1),n11=GX[d]*(xf-1)+GY[d]*(yf-1);
+    const x1=n00+(n10-n00)*u,x2=n01+(n11-n01)*u;
+    return (x1+(x2-x1)*v)*1.4;
+  };
+}
+
+/* ---------- generators: every length is in units of S so art is identical at any resolution ---------- */
+const TAU=Math.PI*2;
+const GEN={
+  flow(g){const{ctx,W,H,S,A,rnd,noise,pal,d,s,v,pick}=g;
+    const f=(0.6+(1-s)*2.6)/(S*100),twist=1+v*2.6,n=Math.round((300+d*2300)*A),step=S*0.7;
+    ctx.lineCap="round";ctx.lineJoin="round";ctx.globalAlpha=.9;
+    for(let i=0;i<n;i++){let x=rnd()*W,y=rnd()*H;const steps=20+rnd()*70;
+      ctx.strokeStyle=pick(pal.cols);ctx.lineWidth=S*(0.12+rnd()*rnd()*1.5);ctx.beginPath();ctx.moveTo(x,y);
+      for(let k=0;k<steps;k++){const a=noise(x*f,y*f)*Math.PI*twist;x+=Math.cos(a)*step;y+=Math.sin(a)*step;ctx.lineTo(x,y);
+        if(x<-S*4||y<-S*4||x>W+S*4||y>H+S*4)break}
+      ctx.stroke()}
+  },
+  blocks(g){const{ctx,W,H,S,rnd,pal,d,s,v,pick}=g;
+    const cols=Math.max(2,Math.round(W/(S*(7+s*20)))),cw=W/cols,rows=Math.ceil(H/cw),occ=new Uint8Array(cols*rows);
+    const all=[pal.bg].concat(pal.cols),other=a=>{let b=pick(all),t=0;while(b===a&&t++<8)b=pick(all);return b};
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){if(occ[r*cols+c])continue;let n=1;
+      if(rnd()<v*.35&&c+1<cols&&r+1<rows&&!occ[r*cols+c+1]&&!occ[(r+1)*cols+c]&&!occ[(r+1)*cols+c+1])n=2;
+      for(let i=0;i<n;i++)for(let j=0;j<n;j++)occ[(r+i)*cols+c+j]=1;
+      const x=c*cw,y=r*cw,z=cw*n,a=pick(all),b=other(a);
+      ctx.fillStyle=a;ctx.fillRect(x-.5,y-.5,z+1,z+1);
+      if(rnd()>.3+d*.7)continue;
+      const kind=Math.floor(rnd()*7),q=Math.floor(rnd()*4);
+      const cx=[x,x+z,x+z,x][q],cy=[y,y,y+z,y+z][q],a0=q*Math.PI/2;
+      ctx.fillStyle=b;ctx.beginPath();
+      if(kind===0){ctx.moveTo(cx,cy);ctx.arc(cx,cy,z,a0,a0+Math.PI/2);ctx.fill()}
+      else if(kind===1){ctx.arc(x+z/2,y+z/2,z*.36,0,TAU);ctx.fill()}
+      else if(kind===2){const ex=[x+z/2,x+z,x+z/2,x][q],ey=[y,y+z/2,y+z,y+z/2][q];ctx.arc(ex,ey,z/2,a0,a0+Math.PI);ctx.fill()}
+      else if(kind===3){const c3=other(b);for(let i=0;i<4;i++){ctx.fillStyle=i%2?c3:b;ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,z*(1-i*.24),a0,a0+Math.PI/2);ctx.fill()}}
+      else if(kind===4){const P=[[x,y],[x+z,y],[x+z,y+z],[x,y+z]];ctx.moveTo(P[q][0],P[q][1]);ctx.lineTo(P[(q+1)%4][0],P[(q+1)%4][1]);ctx.lineTo(P[(q+2)%4][0],P[(q+2)%4][1]);ctx.fill()}
+      else if(kind===5){const m=4,bw=z/(m*2);for(let i=0;i<m;i++){if(q%2)ctx.fillRect(x,y+bw*(i*2+.5),z,bw);else ctx.fillRect(x+bw*(i*2+.5),y,bw,z)}}
+      else{ctx.arc(x+z/2,y+z/2,z*.12,0,TAU);ctx.fill();ctx.beginPath();ctx.strokeStyle=b;ctx.lineWidth=z*.07;ctx.arc(x+z/2,y+z/2,z*.32,0,TAU);ctx.stroke()}
+    }
+  },
+  contours(g){const{ctx,W,H,S,noise,pal,d,s,v}=g;
+    const cs=S*.6,gx=Math.ceil(W/cs)+1,gy=Math.ceil(H/cs)+1,F=new Float32Array(gx*gy),f=(0.8+(1-s)*3)/(S*100),warp=v*1.3;
+    let mn=1e9,mx=-1e9;
+    for(let j=0;j<gy;j++)for(let i=0;i<gx;i++){const x=i*cs*f,y=j*cs*f;
+      const wx=warp*noise(x*.7+9.3,y*.7),wy=warp*noise(x*.7,y*.7+5.1);
+      const val=noise(x+wx,y+wy)+.45*noise(x*2.1+wx+40,y*2.1+wy+40);F[j*gx+i]=val;if(val<mn)mn=val;if(val>mx)mx=val}
+    const L=Math.round(5+d*22);ctx.lineCap="round";
+    for(let k=0;k<L;k++){const t=mn+(k+.5)/L*(mx-mn);ctx.strokeStyle=pal.cols[k%pal.cols.length];ctx.lineWidth=S*(k%4===0?.34:.17);ctx.beginPath();
+      for(let j=0;j<gy-1;j++)for(let i=0;i<gx-1;i++){
+        const a=F[j*gx+i],b=F[j*gx+i+1],c=F[(j+1)*gx+i+1],e=F[(j+1)*gx+i];
+        const idx=(a>t?8:0)|(b>t?4:0)|(c>t?2:0)|(e>t?1:0);if(idx===0||idx===15)continue;
+        const x=i*cs,y=j*cs;
+        const T=[x+cs*(t-a)/(b-a),y],R=[x+cs,y+cs*(t-b)/(c-b)],B=[x+cs*(t-e)/(c-e),y+cs],Lf=[x,y+cs*(t-a)/(e-a)];
+        const seg=(p,q)=>{ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1])};
+        switch(idx){case 1:case 14:seg(Lf,B);break;case 2:case 13:seg(B,R);break;case 3:case 12:seg(Lf,R);break;
+          case 4:case 11:seg(T,R);break;case 6:case 9:seg(T,B);break;case 7:case 8:seg(T,Lf);break;
+          case 5:seg(T,Lf);seg(B,R);break;case 10:seg(T,R);seg(Lf,B);break}
+      }
+      ctx.stroke()}
+  },
+  layers(g){const{ctx,W,H,S,rnd,noise,pal,d,s,v,pick}=g;
+    if(rnd()<.75){ctx.fillStyle=pick(pal.cols);ctx.beginPath();ctx.arc(W*(.2+.6*rnd()),H*(.14+.22*rnd()),S*(7+12*rnd()),0,TAU);ctx.fill()}
+    const n=Math.round(3+d*9),amp=S*(2.5+v*13),f=(1+(1-s)*5)/(S*140),off=rnd()*500,start=Math.floor(rnd()*pal.cols.length);
+    ctx.shadowColor="rgba(0,0,0,.28)";ctx.shadowBlur=S*2;ctx.shadowOffsetY=-S*.4;
+    for(let i=0;i<n;i++){const base=H*(.3+.68*(i/n));ctx.fillStyle=pal.cols[(start+i)%pal.cols.length];ctx.beginPath();ctx.moveTo(-S,H+S*4);
+      for(let x=-S;x<=W+S;x+=S*.5){const y=base+noise(x*f+off,i*3.7)*amp+noise(x*f*3.1+off,i*1.3+20)*amp*.22;ctx.lineTo(x,y)}
+      ctx.lineTo(W+S,H+S*4);ctx.closePath();ctx.fill()}
+    ctx.shadowColor="transparent";ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+  },
+  terrazzo(g){const{ctx,W,H,S,A,rnd,pal,d,s,v,pick}=g;
+    const n=Math.round((40+d*420)*A),k=3-v*2,rs=[];
+    for(let i=0;i<n;i++)rs.push(S*(.5+Math.pow(rnd(),k)*(1+s*5.5)));
+    rs.sort((a,b)=>b-a);const placed=[];
+    for(const r of rs){for(let t=0;t<14;t++){const x=rnd()*W,y=rnd()*H;let ok=true;
+        for(let i=0;i<placed.length;i++){const p=placed[i],dx=p[0]-x,dy=p[1]-y,m=p[2]+r+S*.35;if(dx*dx+dy*dy<m*m){ok=false;break}}
+        if(!ok)continue;placed.push([x,y,r]);
+        const nv=5+Math.floor(rnd()*4),rot=rnd()*TAU;ctx.fillStyle=pick(pal.cols);ctx.beginPath();
+        for(let j=0;j<nv;j++){const a=rot+(j+rnd()*.6)/nv*TAU,rr=r*(.62+rnd()*.38);const px=x+Math.cos(a)*rr,py=y+Math.sin(a)*rr;j?ctx.lineTo(px,py):ctx.moveTo(px,py)}
+        ctx.closePath();ctx.fill();break}}
+  },
+  orbits(g){const{ctx,W,H,S,A,rnd,pal,d,s,v,pick}=g;
+    const n=Math.max(2,Math.round((2+v*5)*A));
+    for(let i=0;i<n;i++){const cx=rnd()*W,cy=rnd()*H,step=S*(1.2+s*4)*(.6+rnd()*.8),maxR=S*(14+rnd()*42*(.4+s));
+      ctx.fillStyle=pick(pal.cols);ctx.beginPath();ctx.arc(cx,cy,maxR,0,TAU);ctx.fill();
+      for(let r=maxR-step;r>step*.6;r-=step){if(rnd()>.25+d*.75)continue;
+        ctx.strokeStyle=rnd()<.25?pal.bg:pick(pal.cols);ctx.lineWidth=step*(.15+rnd()*.6);ctx.lineCap=rnd()<.5?"round":"butt";
+        const a0=rnd()*TAU,len=rnd()<.45?TAU:TAU*(.15+rnd()*.7);ctx.beginPath();ctx.arc(cx,cy,r,a0,a0+len);ctx.stroke()}
+      ctx.fillStyle=rnd()<.5?pal.bg:pick(pal.cols);ctx.beginPath();ctx.arc(cx,cy,step*(.4+rnd()*.7),0,TAU);ctx.fill()}
+  }
+};
+
+/* ---------- geometry ---------- */
+function trimMM(){const z=SIZES.find(x=>x[0]===state.size)||SIZES[0];
+  if(z[0]!=="custom")return[z[2],z[3]];
+  const k=state.unit==="in"?25.4:1;return[Math.max(10,(+state.cw||4.25)*k),Math.max(10,(+state.ch||5.5)*k)]}
+function geom(pxPerMM){const[tw,th]=trimMM(),wrap=state.wrap==="1",b=+state.bleed;
+  const mmW=tw*(wrap?2:1)+2*b,mmH=th+2*b;
+  return{mmW,mmH,W:Math.max(8,Math.round(mmW*pxPerMM)),H:Math.max(8,Math.round(mmH*pxPerMM)),b:b*pxPerMM,cw:tw*pxPerMM,ch:th*pxPerMM,wrap}}
+function geomFit(longPx){const g=geom(1);return geom(longPx/Math.max(g.mmW,g.mmH))}
+
+/* ---------- render ---------- */
+let _grain=null;
+function grainTile(){if(_grain)return _grain;const c=document.createElement("canvas");c.width=c.height=256;const x=c.getContext("2d"),im=x.createImageData(256,256),r=mulberry32(7);
+  for(let i=0;i<im.data.length;i+=4){const v=r()<.5?0:255;im.data[i]=im.data[i+1]=im.data[i+2]=v;im.data[i+3]=r()*80}
+  x.putImageData(im,0,0);return _grain=c}
+function drawLabel(ctx,g,S){if(state.label==="off")return;
+  const paper="#f7f3ea",ink="#1b1b19",x0=g.b+(g.wrap?g.cw:0),cx=x0+g.cw/2,cy=g.b+g.ch*.3;let bw,bh;
+  ctx.save();
+  if(state.label==="plate"){bw=g.cw*.64;bh=bw*.44;
+    ctx.shadowColor="rgba(0,0,0,.22)";ctx.shadowBlur=S*1.2;ctx.shadowOffsetY=S*.3;ctx.fillStyle=paper;ctx.fillRect(cx-bw/2,cy-bh/2,bw,bh);
+    ctx.shadowColor="transparent";ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+    ctx.strokeStyle=ink;ctx.lineWidth=S*.14;const m=S*1;ctx.strokeRect(cx-bw/2+m,cy-bh/2+m,bw-2*m,bh-2*m)}
+  else{bw=g.cw;bh=g.ch*.16;ctx.fillStyle=paper;ctx.fillRect(0,cy-bh/2,g.W,bh);
+    ctx.fillStyle=ink;ctx.fillRect(0,cy-bh/2+S*.7,g.W,S*.12);ctx.fillRect(0,cy+bh/2-S*.82,g.W,S*.12)}
+  const title=state.title.trim(),sub=state.sub.trim(),maxW=bw*.8,[wt,fam]=FONTS[state.font]||FONTS.grotesk;
+  ctx.fillStyle=ink;ctx.textAlign="center";ctx.textBaseline="middle";
+  if(title){let fs=bh*.34;ctx.font=wt+" "+fs+"px "+fam;const w=ctx.measureText(title).width;if(w>maxW){fs*=maxW/w;ctx.font=wt+" "+fs+"px "+fam}
+    ctx.fillText(title,cx,cy+(sub?-bh*.09:bh*.02))}
+  if(sub){let fs=bh*.115;const t=sub.toUpperCase();if("letterSpacing" in ctx)ctx.letterSpacing=(fs*.14)+"px";
+    ctx.font='500 '+fs+'px "JetBrains Mono",ui-monospace,monospace';const w=ctx.measureText(t).width;if(w>maxW){fs*=maxW/w;ctx.font='500 '+fs+'px "JetBrains Mono",ui-monospace,monospace'}
+    ctx.fillText(t,cx,cy+(title?bh*.25:0))}
+  ctx.restore()}
+function render(c,g,o){o=o||{};c.width=g.W;c.height=g.H;const ctx=c.getContext("2d"),{W,H}=g,S=Math.sqrt(g.cw*g.ch)/100,A=W*H/(g.cw*g.ch);
+  const seed=o.seed||state.seed,rnd=mulberry32(hash(seed+"|"+state.style)),noise=makeNoise(rnd);
+  const pal={bg:state.colors[0],cols:state.colors.slice(1)};
+  ctx.fillStyle=pal.bg;ctx.fillRect(0,0,W,H);
+  ctx.save();GEN[state.style]({ctx,W,H,S,A,rnd,noise,pal,d:state.detail,s:state.scale,v:state.vary,pick:a=>a[Math.floor(rnd()*a.length)]});ctx.restore();
+  if(state.grain>0){const t=grainTile(),sz=256*Math.max(1,S*.11);ctx.save();ctx.globalAlpha=state.grain*.9;
+    for(let y=0;y<H;y+=sz)for(let x=0;x<W;x+=sz)ctx.drawImage(t,x,y,sz,sz);ctx.restore()}
+  if(!o.noLabel)drawLabel(ctx,g,S)}
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+const main=$("main"),sheet=$("sheet");
+function fmt(n){return(Math.round(n*100)/100).toString()}
+function outGeom(){let dpi=+state.dpi,g=geom(dpi/25.4);if(g.W*g.H>MAX_PX){dpi=Math.floor(dpi*Math.sqrt(MAX_PX/(g.W*g.H)));g=geom(dpi/25.4)}return{g,dpi}}
+function fit(){const g=geomFit(1000),wide=matchMedia("(min-width:900px)").matches;
+  const aw=$("fit").clientWidth,ah=wide?Math.max(200,innerHeight-130):Math.max(160,innerHeight*.4);
+  const k=Math.min(aw/g.W,ah/g.H);sheet.style.width=Math.floor(g.W*k)+"px";sheet.style.height=Math.floor(g.H*k)+"px"}
+function draw(){const g=geomFit(1100);render(main,g);fit();
+  const show=state.guides,b=+state.bleed;
+  $("gFold").hidden=!(show&&g.wrap);$("sides").hidden=!g.wrap;
+  const t=$("gTrim");t.hidden=!(show&&b>0);if(b>0){t.style.left=t.style.right=(b/g.mmW*100)+"%";t.style.top=t.style.bottom=(b/g.mmH*100)+"%"}
+  const o=outGeom();$("dims").innerHTML=o.g.W+" × "+o.g.H+" px at "+o.dpi+" dpi<br>"+fmt(o.g.mmW/25.4)+" × "+fmt(o.g.mmH/25.4)+" in · "+fmt(o.g.mmW)+" × "+fmt(o.g.mmH)+" mm"}
+let raf=0,tt=0;
+function update(){persist();cancelAnimationFrame(raf);raf=requestAnimationFrame(draw);clearTimeout(tt);tt=setTimeout(drawThumbs,180)}
+function drawThumbs(){const g=geomFit(220);document.querySelectorAll("#thumbs .thumb").forEach((b,i)=>{render(b.firstChild,g,{seed:thumbSeeds[i],noLabel:true});b.setAttribute("aria-pressed",String(thumbSeeds[i]===state.seed))})}
+function newSeed(){return String(100000+Math.floor(Math.random()*900000))}
+function reseed(){thumbSeeds=[];for(let i=0;i<6;i++)thumbSeeds.push(newSeed());state.seed=thumbSeeds[0];$("seed").value=state.seed}
+function syncStyle(){document.querySelectorAll("#styles .chip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===state.style)))}
+function syncColors(){document.querySelectorAll("#mix input").forEach((el,i)=>el.value=state.colors[i]);
+  const cur=state.colors.join();document.querySelectorAll("#pals .pal").forEach((b,i)=>b.setAttribute("aria-pressed",String(PALETTES[i][1].join()===cur)))}
+function syncMisc(){$("customRow").hidden=state.size!=="custom";$("labelText").hidden=state.label==="off"}
+
+STYLES.forEach(([v,n])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.v=v;b.textContent=n;b.onclick=()=>{state.style=v;syncStyle();update()};$("styles").appendChild(b)});
+PALETTES.forEach(([n,c])=>{const b=document.createElement("button");b.type="button";b.className="pal";b.title=n;
+  const sw=document.createElement("span");sw.className="sw";c.forEach(h=>{const i=document.createElement("i");i.style.background=h;sw.appendChild(i)});
+  const nm=document.createElement("span");nm.className="nm";nm.textContent=n;b.append(sw,nm);b.onclick=()=>{state.colors=c.slice();syncColors();update()};$("pals").appendChild(b)});
+["Paper","1","2","3","4","5"].forEach((n,i)=>{const l=document.createElement("label"),inp=document.createElement("input");inp.type="color";inp.id="col"+i;
+  inp.oninput=()=>{state.colors[i]=inp.value;syncColors();update()};l.append(inp,document.createTextNode(n));$("mix").appendChild(l)});
+SIZES.forEach(([v,n])=>{const o=document.createElement("option");o.value=v;o.textContent=n;$("size").appendChild(o)});
+for(let i=0;i<6;i++){const b=document.createElement("button");b.type="button";b.className="thumb";b.setAttribute("aria-label","Variation "+(i+1));b.appendChild(document.createElement("canvas"));
+  b.onclick=()=>{state.seed=thumbSeeds[i];$("seed").value=state.seed;update()};$("thumbs").appendChild(b)}
+
+document.querySelectorAll("[data-k]").forEach(el=>{const k=el.dataset.k;
+  if(el.type==="checkbox")el.checked=!!state[k];else el.value=state[k];
+  el.addEventListener(el.tagName==="SELECT"||el.type==="checkbox"?"change":"input",()=>{
+    state[k]=el.type==="checkbox"?el.checked:el.type==="range"||el.type==="number"?(parseFloat(el.value)||0):el.value;syncMisc();update()})});
+$("seed").value=state.seed;
+$("seed").addEventListener("input",e=>{state.seed=e.target.value.trim()||"0";update()});
+$("shuffle").onclick=()=>{reseed();update()};
+$("rotate").onclick=()=>{state.colors.push(state.colors.shift());syncColors();update()};
+$("surprise").onclick=()=>{state.style=STYLES[Math.floor(Math.random()*STYLES.length)][0];state.colors=PALETTES[Math.floor(Math.random()*PALETTES.length)][1].slice();
+  ["detail","scale","vary"].forEach(k=>{state[k]=Math.round((.15+Math.random()*.7)*100)/100;$(k).value=state[k]});reseed();syncStyle();syncColors();update()};
+addEventListener("resize",fit);
+
+/* ---------- saving ---------- */
+let dl=null;
+if(window.claude&&typeof window.claude.use==="function")window.claude.use("downloads").then(d=>{dl=d}).catch(()=>{});
+const say=t=>{$("status").textContent=t};
+const toBlob=(c,type,q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("render failed")),type,q));
+let CRC=null;
+function crc32(u8){if(!CRC){CRC=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;CRC[n]=c>>>0}}
+  let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC[(c^u8[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function addPhys(buf,dpi){// stamp the physical resolution into the PNG so "actual size" prints at the right size
+  const src=new Uint8Array(buf),ch=new Uint8Array(21),dv=new DataView(ch.buffer),ppm=Math.round(dpi/0.0254);
+  dv.setUint32(0,9);ch.set([112,72,89,115],4);dv.setUint32(8,ppm);dv.setUint32(12,ppm);ch[16]=1;dv.setUint32(17,crc32(ch.subarray(4,17)));
+  const out=new Uint8Array(src.length+21);out.set(src.subarray(0,33),0);out.set(ch,33);out.set(src.subarray(33),54);return out}
+function makePdf(jpeg,pw,ph,w,h){const enc=s=>new TextEncoder().encode(s),parts=[],offs=[];let len=0;const push=u=>{parts.push(u);len+=u.length};
+  push(enc("%PDF-1.4\n"));const obj=(n,body)=>{offs[n]=len;push(enc(n+" 0 obj\n"+body+"\nendobj\n"))};
+  w=w.toFixed(2);h=h.toFixed(2);
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+w+" "+h+"] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  offs[4]=len;push(enc("4 0 obj\n<< /Type /XObject /Subtype /Image /Width "+pw+" /Height "+ph+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+jpeg.length+" >>\nstream\n"));push(jpeg);push(enc("\nendstream\nendobj\n"));
+  const content="q "+w+" 0 0 "+h+" 0 0 cm /Im0 Do Q";obj(5,"<< /Length "+content.length+" >>\nstream\n"+content+"\nendstream");
+  const xref=len;let x="xref\n0 6\n0000000000 65535 f \n";for(let i=1;i<=5;i++)x+=String(offs[i]).padStart(10,"0")+" 00000 n \n";
+  x+="trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";push(enc(x));return new Blob(parts)}
+/* On the website: installed iPhone and iPad apps can't download files, so the file
+   goes to the share sheet there (Save to Files, Save Image, Print). Sharing needs a
+   recent tap, so if rendering took too long we ask for one more tap. Everywhere else
+   it's a normal browser download. */
+function useShareSheet(){
+  const standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
+  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  return standalone&&ios&&typeof File==="function"&&!!navigator.share}
+async function shareFile(file){
+  try{await navigator.share({files:[file],title:file.name});$("shareRow").hidden=true;say("Saved "+file.name);return}
+  catch(e){if(e&&e.name==="AbortError"){$("shareRow").hidden=true;say("Save cancelled.");return}
+    $("shareRow").hidden=false;$("btnShare").onclick=()=>shareFile(file);say("File ready. Tap Save or print file.")}}
+async function webSave(name,data,kind){
+  const type=kind==="png"?"image/png":"application/pdf",blob=new Blob([data],{type});
+  if(useShareSheet()){const file=new File([blob],name,{type});
+    if(!navigator.canShare||navigator.canShare({files:[file]})){await shareFile(file);return}}
+  const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.rel="noopener";
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);say("Saved "+name)}
+let busy=false;
+async function save(kind){if(busy)return;busy=true;say("Rendering at full size…");await new Promise(r=>setTimeout(r,40));
+  try{const{g,dpi}=outGeom(),c=document.createElement("canvas");render(c,g);
+    const z=state.size==="custom"?"custom":state.size,name="cover-"+state.style+"-"+(state.seed.replace(/[^a-z0-9]+/gi,"")||"0")+"-"+z+(g.wrap?"-wrap":"")+"."+kind;
+    let data,pngBlob=null;
+    if(kind==="png"){pngBlob=await toBlob(c,"image/png");data=new Blob([addPhys(await pngBlob.arrayBuffer(),dpi)])}
+    else{const j=new Uint8Array(await(await toBlob(c,"image/jpeg",.93)).arrayBuffer());data=makePdf(j,g.W,g.H,g.mmW/25.4*72,g.mmH/25.4*72)}
+    if(dl){try{await dl.save({filename:name,data});say("Saved "+name);busy=false;return}
+      catch(e){if(e&&(e.code==="declined")){say("Save cancelled.");busy=false;return}
+        if(e&&e.code==="rate_limited"){say("A save prompt is already open. Answer it, then try again.");busy=false;return}}}
+    if(!window.claude){await webSave(name,data,kind);busy=false;return}
+    if(kind==="png"){$("overImg").src=URL.createObjectURL(data);$("over").hidden=false;say("Press and hold the image to save it.")}
+    else say("PDF saving is not available in this view. Open the page on claude.ai, or save a PNG instead.");
+  }catch(e){say("That size could not be rendered on this device. Try a lower resolution.")}
+  busy=false}
+$("savePng").onclick=()=>save("png");$("savePdf").onclick=()=>save("pdf");
+$("overClose").onclick=()=>{$("over").hidden=true;try{URL.revokeObjectURL($("overImg").src)}catch(e){}$("overImg").removeAttribute("src")};
+
+/* ---------- start ---------- */
+(function(){const keep=state.seed;reseed();thumbSeeds[0]=keep;state.seed=keep;$("seed").value=keep})();
+syncStyle();syncColors();syncMisc();draw();drawThumbs();
+if(document.fonts&&document.fonts.load)Promise.all([document.fonts.load('600 20px "Bricolage Grotesque"'),document.fonts.load('400 20px "DM Serif Display"'),document.fonts.load('500 20px "JetBrains Mono"')]).then(()=>draw()).catch(()=>{});
+if(window.ResizeObserver)new ResizeObserver(fit).observe($("fit"));
+</script>
+<script>
+/* Offline support and the Install button. */
+(function(){
+  if("serviceWorker" in navigator&&location.protocol!=="file:"&&!window.claude){
+    addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(e=>console.warn("Offline mode is unavailable:",e))})}
+  const sec=document.getElementById("installSec"),ib=document.getElementById("btnInstall");let deferred=null;
+  addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferred=e;sec.hidden=false});
+  ib.addEventListener("click",async()=>{if(!deferred)return;sec.hidden=true;deferred.prompt();try{await deferred.userChoice}catch(e){}deferred=null});
+  addEventListener("appinstalled",()=>{sec.hidden=true;deferred=null});
+})();
+</script>
+</body>
+</html>

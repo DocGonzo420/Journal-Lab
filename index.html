@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Journal Lab</title>
-<meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter, A4 or A5 with cut marks.">
+<meta name="description" content="Make printable dot grid, isometric, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter, A4 or A5 with cut marks.">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1319" media="(prefers-color-scheme: dark)">
@@ -219,7 +219,8 @@ const ALL_PRESETS = PRESETS.flatMap(g => g.items);
 const presetLabel = k => (ALL_PRESETS.find(p => p.k === k) || {}).l || '';
 
 const TEMPLATES = [
-  {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'lgrid', l:'Corner grid (L marks)'}, {v:'lined', l:'Ruled lines'},
+  {v:'dots', l:'Dot grid'}, {v:'grid', l:'Square grid'}, {v:'cross', l:'Cross grid'}, {v:'lgrid', l:'Corner grid (L marks)'},
+  {v:'iso', l:'Isometric grid'}, {v:'isodots', l:'Isometric dot grid'}, {v:'lined', l:'Ruled lines'},
   {v:'cornell', l:'Cornell notes'}, {v:'checklist', l:'Checklist'},
   {v:'daily', l:'Daily planner'}, {v:'weekly', l:'Weekly planner'}, {v:'monthly', l:'Monthly calendar'},
   {v:'habit', l:'Habit tracker'}, {v:'tracker', l:'Tracker or log'}, {v:'title', l:'Title page'}, {v:'blank', l:'Blank'}
@@ -238,13 +239,13 @@ const FONTS = {
   amatic:{l:'Amatic SC (hand-drawn capitals)', css:'"JL Amatic SC",cursive', file:'AmaticSC', pkg:'amatic-sc', wf:0.34}
 };
 const fontURL = (f,w) => 'vendor/fonts/'+f.file+'_'+w+'.ttf';
-const SP_KEYS = ['dots','grid','lgrid','lined','cornell','checklist','habit','tracker'];
+const SP_KEYS = ['dots','grid','lgrid','cross','iso','isodots','lined','cornell','checklist','habit','tracker'];
 
 const DEFAULTS = {
   w:148, h:210, preset:'a5', unit:'mm',
   tpl:'dots',
-  spacings:{dots:5, grid:5, lgrid:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
-  lgArm:60, lgShape:'l',
+  spacings:{dots:5, grid:5, lgrid:5, cross:5, iso:5, isodots:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
+  lgArm:60, lgShape:'l', crossArm:40,
   tpTitle:'My Journal', tpSub:'', tpLine:'', tpV:'center', tpAlign:'center', tpSize:32, tpSubSize:13,
   tpCase:'normal', tpBold:true, tpRule:'line', tpRulePos:'between', tpRuleW:'short', tpFrame:'none', tpFields:'none',
   weight:0.4, intensity:70, color:'#6b7280',
@@ -286,6 +287,7 @@ function sanitize(s){
   s.pageNumPlace = s.pageNumPlace === 'header' ? 'header' : 'footer';
   if(!['mood','reading','log'].includes(s.trackKind)) s.trackKind = 'mood';
   s.lgArm = Math.round(num(s.lgArm,60,15,100)); s.lgShape = s.lgShape === 'cross' ? 'cross' : 'l';
+  s.crossArm = Math.round(num(s.crossArm,40,10,100));
   for(const k of ['tpTitle','tpSub','tpLine']) s[k] = String(s[k] == null ? DEFAULTS[k] : s[k]).slice(0,60);
   s.tpSize = num(s.tpSize,32,10,96); s.tpSubSize = num(s.tpSubSize,13,6,48);
   const pick = (k,list) => { if(!list.includes(s[k])) s[k] = DEFAULTS[k]; };
@@ -350,7 +352,7 @@ const dotRadius = w => 0.1 + w*0.32;
 
 /* Bleed: dot grid, square grid and ruled patterns can fill the page and run
    past its edges, so a slightly-off cut still looks clean. */
-const BLEED_TPLS = ['dots','grid','lgrid','lined'];
+const BLEED_TPLS = ['dots','grid','lgrid','cross','iso','isodots','lined'];
 /* Mixed pages: one PDF made of parts, each a run of pages of one type. */
 const uses = (s,t) => s.mix ? s.parts.some(pt => pt.tpl === t) : s.tpl === t;
 const bleedTpl = s => s.mix ? s.parts.some(pt => BLEED_TPLS.includes(pt.tpl)) : BLEED_TPLS.includes(s.tpl);
@@ -561,6 +563,43 @@ const TPL = {
     for(let j=1;j<rows;j++) for(let i=0;i<cols-1;i++){
       const x = ox+i*sp, y = oy+j*sp;
       C.ops.push(L(x, y, x, y-a, C.lw, C.line), L(x, y, x+a, y, C.lw, C.line));
+    }
+  },
+
+  /* Cross grid: a small plus sign at every grid point. Mark size is a share of
+     the square. It draws with the corner grid's cross marks. */
+  cross(s,B,C){ TPL.lgrid(Object.assign({}, s, {lgShape:'cross', lgArm:s.crossArm}), B, C); },
+
+  /* Isometric grid: equilateral triangles of side sp, drawn as vertical lines
+     and lines at 30 degrees either way, trimmed to the outer vertical lines. */
+  iso(s,B,C){
+    const a = spacing(s), h = a*Math.sqrt(3)/2, m = 1/Math.sqrt(3);
+    const [ox, cols] = fit(B.x, B.w, h, C.ax), [oy] = fit(B.y, B.h, a, C.ay);
+    if(cols < 2) return;
+    const xa = ox, xb = ox + (cols-1)*h, ya = B.y, yb = B.y + B.h, e = 1e-9;
+    for(let i=0;i<cols;i++) C.ops.push(L(ox+i*h, ya, ox+i*h, yb, C.lw, C.line));
+    for(const sl of [m, -m]){
+      // Lines y = sl*x + c through the lattice points; c steps by a.
+      const c0 = oy - sl*ox, lo = Math.min(ya - sl*xa, ya - sl*xb), hi = Math.max(yb - sl*xa, yb - sl*xb);
+      for(let k = Math.ceil((lo - c0)/a - e); c0 + k*a <= hi + e; k++){
+        const c = c0 + k*a;
+        let x1 = (ya - c)/sl, x2 = (yb - c)/sl; if(x1 > x2) [x1, x2] = [x2, x1];
+        x1 = Math.max(x1, xa); x2 = Math.min(x2, xb);
+        if(x2 - x1 < 1e-6) continue;
+        C.ops.push(L(x1, sl*x1 + c, x2, sl*x2 + c, C.lw, C.line));
+      }
+    }
+  },
+
+  /* Isometric dot grid: dots at the corners of the same triangles, every other
+     column shifted half a step. */
+  isodots(s,B,C){
+    const a = spacing(s), h = a*Math.sqrt(3)/2, r = dotRadius(s.weight);
+    const [ox, cols] = fit(B.x, B.w, h, C.ax), [oy] = fit(B.y, B.h, a, C.ay);
+    for(let i=0;i<cols;i++){
+      const off = i % 2 ? a/2 : 0;
+      let y = oy + off - a*Math.floor((oy + off - B.y)/a + 1e-9);
+      for(; y <= B.y + B.h + 1e-9; y += a) C.ops.push(D(ox + i*h, y, r, C.line));
     }
   },
 
@@ -1265,8 +1304,8 @@ function matchPreset(){
 }
 
 const SPACE_TPLS = SP_KEYS;
-const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Square size', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height', habit:'Row height', tracker:'Row height'};
-const MIX_SP_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Corner grid square size', lined:'Ruled line spacing', cornell:'Cornell line spacing', checklist:'Checklist row height', habit:'Habit row height', tracker:'Log row height'};
+const SPACE_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Square size', cross:'Square size', iso:'Triangle size', isodots:'Dot spacing', lined:'Line spacing', cornell:'Line spacing', checklist:'Row height', habit:'Row height', tracker:'Row height'};
+const MIX_SP_LABEL = {dots:'Dot spacing', grid:'Square size', lgrid:'Corner grid square size', cross:'Cross grid square size', iso:'Isometric triangle size', isodots:'Isometric dot spacing', lined:'Ruled line spacing', cornell:'Cornell line spacing', checklist:'Checklist row height', habit:'Habit row height', tracker:'Log row height'};
 const hasSpacing = (s,t) => SPACE_TPLS.includes(t) && !(t === 'tracker' && s.trackKind === 'mood');
 const COLORS = [['#6b7280','Graphite'],['#a3a9b4','Silver'],['#3b6ea8','Blue'],['#2f7d5b','Green'],['#a8642a','Copper'],['#111827','Black']];
 
@@ -1291,10 +1330,13 @@ const SECTIONS = [
       get:s=>s.spacings[s.tpl], set:(s,v)=>{ s.spacings[s.tpl]=v; }, show:s=>!s.mix && hasSpacing(s, s.tpl)},
     ...SP_KEYS.map(k => ({id:'sp_'+k, t:'len', label:MIX_SP_LABEL[k], min:1.5, max:30,
       get:s=>s.spacings[k], set:(s,v)=>{ s.spacings[k]=v; }, show:s=>s.mix && uses(s,k) && hasSpacing(s,k)})),
-    {id:'weight', t:'range', label:s=>s.tpl==='dots'&&!s.mix?'Dot size':'Line weight', key:'weight', min:.1, max:2, step:.05,
+    {id:'weight', t:'range', label:s=>(s.tpl==='dots'||s.tpl==='isodots')&&!s.mix?'Dot size':'Line weight', key:'weight', min:.1, max:2, step:.05,
       fmt:s=>s.tpl==='dots'&&!s.mix?(2*dotRadius(s.weight)).toFixed(2)+' mm':s.weight.toFixed(2)+' pt', show:s=>s.mix||s.tpl!=='blank'},
     {id:'intensity', t:'range', label:'Darkness', key:'intensity', min:10, max:100, step:5, fmt:s=>s.intensity+'%'},
     {id:'color', t:'color', label:'Ink colour', key:'color'},
+    {id:'crossArm', t:'range', label:'Cross size', key:'crossArm', min:10, max:100, step:5, fmt:s=>s.crossArm+'% of a square', show:s=>uses(s,'cross')},
+    {id:'crossHint', t:'hint', text:'A small plus sign at every grid point: a lighter guide than a full grid. At 100% the crosses join into a square grid.', show:s=>uses(s,'cross')},
+    {id:'isoHint', t:'hint', text:s=>(uses(s,'iso') ? 'Equilateral triangles for 3D sketches, with vertical lines and lines at 30 degrees. ' : '')+(uses(s,'isodots') ? 'Dots at the corners of equilateral triangles, every other column shifted half a step. ' : '')+'The size is the length of a triangle side.', show:s=>uses(s,'iso') || uses(s,'isodots')},
     {id:'lgShape', t:'seg', label:'Mark shape', opts:[['l','L corners'],['cross','Crosses']], key:'lgShape', show:s=>uses(s,'lgrid')},
     {id:'lgArm', t:'range', label:'Mark length', key:'lgArm', min:15, max:100, step:5, fmt:s=>s.lgArm+'% of a square', show:s=>uses(s,'lgrid')},
     {id:'lgHint', t:'hint', text:s=>s.lgShape === 'cross' ? 'A small cross at every grid point, a lighter alternative to a full grid.' : 'Each square is marked by its left and bottom sides only, as an L. At 100% the marks join into a grid with open top and right edges.', show:s=>uses(s,'lgrid')},

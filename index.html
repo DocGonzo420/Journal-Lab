@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Journal Lab</title>
-<meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter or A4 with cut marks.">
+<meta name="description" content="Make printable dot grid, ruled, Cornell, checklist, daily and weekly journal pages at any size, laid out on US Letter, A4 or A5 with cut marks.">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#eceff3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1319" media="(prefers-color-scheme: dark)">
@@ -144,7 +144,7 @@ input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule
       <h1>Journal Lab</h1>
       <button type="button" class="btn small" id="btnInstall" hidden>Install app</button>
     </div>
-    <p class="sub" id="subline">any page size · print on Letter or A4</p>
+    <p class="sub" id="subline">any page size · print on Letter, A4 or A5</p>
     <div class="chips" id="starters" role="group" aria-label="Starting points"></div>
   </header>
 
@@ -192,7 +192,8 @@ const clone = o => JSON.parse(JSON.stringify(o));
 
 const PAPERS = {
   letter:{l:'US Letter', w:215.9, h:279.4},
-  a4:{l:'A4', w:210, h:297}
+  a4:{l:'A4', w:210, h:297},
+  a5:{l:'A5', w:148, h:210}
 };
 
 const PRESETS = [
@@ -402,7 +403,9 @@ function buildTestSheet(w,h,back,paperName){
     'number you can see fully is the most your printer cuts off on that side.',
     'Measure the two 20 mm lines with a ruler and enter them in Journal Lab.'
   ];
-  lines.forEach((t,i) => ops.push(T(tx, ty+7+i*4.2, t, 7.5, mute)));
+  // Narrow paper such as A5 gets smaller type so the lines stay on the sheet.
+  const fs = w < 180 ? 6 : 7.5;
+  lines.forEach((t,i) => ops.push(T(tx, ty+7+i*fs*0.56, t, fs, mute)));
   return ops;
 }
 
@@ -935,7 +938,7 @@ function buildPair(s,lp,rp,opt){
 }
 
 /* =====================================================================
-   3. Sheet layout: how many pages fit on Letter or A4, and where
+   3. Sheet layout: how many pages fit on Letter, A4 or A5, and where
    ===================================================================== */
 function plan(s){
   const bl = bleedOf(s);
@@ -954,7 +957,14 @@ function plan(s){
   else if(lan.n === por.n && lan.n === 0 && lan.sc > por.sc) pick = lan;
   else pick = por;
   let cols = pick.cols, rows = pick.rows, sc = 1, scaled = false;
-  if(cols < 1 || rows < 1){ cols = 1; rows = 1; sc = Math.max(0.05, pick.sc); scaled = true; }
+  if(cols < 1 || rows < 1){
+    // A page as big as the paper (an A5 page on A5 paper) prints at full size, edge to edge.
+    // Only one that is bigger than the paper itself is shrunk to fit.
+    const full = (s.sheetOrient === 'landscape' ? [lan] : s.sheetOrient === 'portrait' ? [por] : [por, lan])
+      .find(o => pw <= o.sw + eps && ph <= o.sh + eps);
+    if(full) pick = full; else { sc = Math.max(0.05, pick.sc); scaled = true; }
+    cols = 1; rows = 1;
+  }
   const per = cols*rows;
   let total, sheets, booklet = null;
   if(isBooklet(s)){
@@ -1355,7 +1365,7 @@ const SECTIONS = [
     {id:'headerHint', t:'hint', text:'Type {n} in either header box to print the page number there, for example Page {n}.'}
   ]},
   {t:'Print on paper', open:true, c:[
-    {id:'paper', t:'seg', label:'Paper', opts:[['letter','US Letter'],['a4','A4']], key:'paper'},
+    {id:'paper', t:'seg', label:'Paper', opts:[['letter','US Letter'],['a4','A4'],['a5','A5']], key:'paper'},
     {id:'sheetOrient', t:'select', label:'Sheet orientation', opts:[['auto','Automatic (fits most pages)'],['portrait','Portrait'],['landscape','Landscape']], key:'sheetOrient'},
     {id:'sheetMargin', t:'len', label:'Printer margin', key:'sheetMargin', min:0, max:30},
     {id:'shareCuts', t:'check', label:'Fewer cuts: pages touch and share cut lines', key:'shareCuts'},

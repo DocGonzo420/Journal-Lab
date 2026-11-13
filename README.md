@@ -1,6 +1,6 @@
 # Journal Lab
 
-Make printable journal and planner pages at any size, lay them out on US Letter or A4 with cut marks, and download a PDF ready to print.
+Make printable journal and planner pages at any size, lay them out on US Letter, A4 or A5 with cut marks, and download a PDF ready to print.
 
 **Open the app:** https://docgonzo420.github.io/Journal-Lab/
 

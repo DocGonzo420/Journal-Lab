@@ -53,9 +53,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 .top{padding-block:14px 6px;min-width:0}
 .top h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
 .sub{margin:2px 0 0;font:400 12px var(--mono);color:var(--muted)}
-.chips{display:flex;gap:8px;overflow-x:auto;padding-block:10px 4px;scrollbar-width:none}
-.chips::-webkit-scrollbar{display:none}
-.chip{flex:none;min-height:36px;padding:0 14px;border:1px solid var(--rule);border-radius:999px;background:var(--panel);cursor:pointer;font-size:13px;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding-block:10px 4px}
+.chips .chiplab{flex-basis:100%;font-size:12px;color:var(--muted)}
+.chips .chiplab+.chip,.chips .chip+.chiplab{margin-top:2px}
+.sec-body>.chips{grid-column:1/-1;padding-block:0}
+.chip{flex:none;min-height:34px;padding:0 12px;border:1px solid var(--rule);border-radius:999px;background:var(--panel);cursor:pointer;font-size:13px;white-space:nowrap}
 .chip:hover{border-color:var(--accent)}
 
 .preview{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;min-width:0}
@@ -145,7 +147,6 @@ input[type=color]{width:42px;height:34px;padding:2px;border:1px solid var(--rule
       <button type="button" class="btn small" id="btnInstall" hidden>Install app</button>
     </div>
     <p class="sub" id="subline">any page size · print on Letter, A4 or A5</p>
-    <div class="chips" id="starters" role="group" aria-label="Starting points"></div>
   </header>
 
   <section class="preview" id="preview" aria-label="Preview">
@@ -1085,7 +1086,8 @@ function toSVG(ops,w,h){
   let shapes = '';
   for(const o of ops){
     if(o.k === 'l'){
-      const key = f3(o.w)+'|'+o.c+'|'+(o.dash ? o.dash.join(' ') : '');
+      const ax = Math.abs(o.x1 - o.x2) < 1e-9 || Math.abs(o.y1 - o.y2) < 1e-9;
+      const key = f3(o.w)+'|'+o.c+'|'+(o.dash ? o.dash.join(' ') : '')+'|'+(ax ? 1 : 0);
       let a = lines.get(key); if(!a){ a = []; lines.set(key,a); }
       a.push('M'+f3(o.x1)+' '+f3(o.y1)+'L'+f3(o.x2)+' '+f3(o.y2));
     } else if(o.k === 'd'){
@@ -1102,8 +1104,8 @@ function toSVG(ops,w,h){
   }
   let body = '<rect width="'+f3(w)+'" height="'+f3(h)+'" fill="#fff"/>';
   lines.forEach((a,key) => {
-    const [lw,c,dash] = key.split('|');
-    body += '<path d="'+a.join('')+'" fill="none" stroke="'+c+'" stroke-width="'+lw+'"'+(dash ? ' stroke-dasharray="'+dash+'"' : '')+'/>';
+    const [lw,c,dash,ax] = key.split('|');
+    body += '<path d="'+a.join('')+'"'+(ax === '1' ? ' class="ax" data-lw="'+lw+'"' : '')+' fill="none" stroke="'+c+'" stroke-width="'+lw+'"'+(dash ? ' stroke-dasharray="'+dash+'"' : '')+'/>';
   });
   dots.forEach((a,key) => {
     const [r,c] = key.split('|');
@@ -1673,6 +1675,10 @@ function makeField(c){
 
 function buildControls(){
   const host = $('#controls');
+  const pre = el('details', {class:'sec'});
+  pre.append(el('summary', {}, 'Presets'),
+    el('div', {class:'sec-body'}, el('div', {class:'chips', id:'starters', role:'group', 'aria-label':'Presets'})));
+  host.append(pre);
   for(const sec of SECTIONS){
     const det = el('details', {class:'sec', open:!!sec.open});
     det.append(el('summary', {}, sec.t));
@@ -1688,12 +1694,12 @@ function vis(){ for(const F of FIELDS) F.wrap.hidden = F.c.show ? !F.c.show(S) :
 
 /* ---------- starters, saved presets, settings backup ---------- */
 const STARTERS = [
-  {n:'A5 dot grid', p:{w:148,h:210,preset:'a5',tpl:'dots',pages:1}},
-  {n:'Letter ruled', p:{w:215.9,h:279.4,preset:'letter',tpl:'lined',spacings:{lined:8},mt:14,mb:14,mi:22,mo:12,marginLine:true,pages:1}},
-  {n:'A5 Cornell notes', p:{w:148,h:210,preset:'a5',tpl:'cornell',title:'Notes',dateField:true,pages:1}},
-  {n:'A5 daily planner', p:{w:148,h:210,preset:'a5',tpl:'daily',title:'Today',dateField:true,pages:1}},
-  {n:'Half-letter weekly', p:{w:139.7,h:215.9,preset:'half',tpl:'weekly',title:'Week of',pages:1}},
-  {n:'Pocket grid', p:{w:88.9,h:139.7,preset:'fn',tpl:'grid',mt:8,mb:8,mi:8,mo:8,pages:1}}
+  {n:'Passport · dot grid', p:{w:89,h:124,preset:'tn',tpl:'dots',pages:4}},
+  {n:'Passport · ruled', p:{w:89,h:124,preset:'tn',tpl:'lined',pages:4}},
+  {n:'Hobonichi Cousin · daily', p:{w:148,h:210,preset:'a5',tpl:'daily',title:'Today',dateField:true,pages:1}},
+  {n:'A5 · dot grid', p:{w:148,h:210,preset:'a5',tpl:'dots',pages:1}},
+  {n:'A5 · weekly', p:{w:148,h:210,preset:'a5',tpl:'weekly',title:'Week of',pages:1}},
+  {n:'Field Notes · grid', p:{w:88.9,h:139.7,preset:'fn',tpl:'grid',mt:8,mb:8,mi:8,mo:8,pages:4}}
 ];
 function printerOf(s){ const o = {}; for(const k of PRINTER_KEYS) o[k] = s[k]; return o; }
 function loadShared(o){ loadSettings(Object.assign({}, o, printerOf(S))); }
@@ -1705,8 +1711,16 @@ function loadSettings(o,keepSheet){
   syncAll(); vis(); update();
 }
 function buildStarters(){
-  const host = $('#starters');
+  const host = $('#starters'); if(!host) return;
+  host.textContent = '';
+  const mine = loadPresets(), names = Object.keys(mine);
+  if(names.length){
+    host.append(el('span', {class:'chiplab'}, 'Saved on this device'));
+    for(const n of names) host.append(el('button', {type:'button', class:'chip', onclick:() => { loadSettings(mine[n]); toast('Loaded '+n); }}, n));
+  }
+  host.append(el('span', {class:'chiplab'}, 'Starting points (your paper size stays the same)'));
   for(const st of STARTERS) host.append(el('button', {type:'button', class:'chip', onclick:() => { loadSettings(st.p, true); toast(st.n+' loaded'); }}, st.n));
+  if(!names.length) host.append(el('span', {class:'chiplab'}, 'Save your own setups under Save and share and they show up here.'));
 }
 
 let jsonBox = null, presetList = null, linkBox = null;
@@ -1715,6 +1729,7 @@ function refreshJson(){
   if(linkBox) linkBox.value = shareLink(S);
 }
 function renderPresetList(){
+  buildStarters();
   if(!presetList) return;
   presetList.textContent = '';
   const ps = loadPresets(), names = Object.keys(ps);
@@ -1794,6 +1809,14 @@ function fitStage(){
   const aw = Math.max(40, st.clientWidth - 24), ah = Math.max(40, st.clientHeight - 24);
   const k = Math.min(aw/cur.w, ah/cur.h);
   svg.style.width = (cur.w*k)+'px'; svg.style.height = (cur.h*k)+'px';
+  // Thin lines shrunk to fit land between pixels and some look darker than others.
+  // Draw straight ones a whole number of screen pixels wide, snapped to the pixel grid.
+  const dpr = window.devicePixelRatio || 1;
+  for(const p of svg.querySelectorAll('path.ax')){
+    const dev = Math.max(1, Math.round(parseFloat(p.dataset.lw)*k*dpr));
+    p.setAttribute('stroke-width', (dev/dpr/k).toFixed(4));
+    p.setAttribute('shape-rendering', 'crispEdges');
+  }
 }
 
 function render(){
@@ -1824,7 +1847,7 @@ function render(){
   const note = $('#note');
   if(pl.scaled){ note.hidden = false; note.textContent = 'This '+(S.spread ? 'spread' : 'page')+' is larger than the printable area, so it prints at '+Math.round(pl.sc*100)+'%. Lower the printer margin, pick a smaller page, or switch paper to print at 100%.'; }
   else note.hidden = true;
-  $('#subline').textContent = pl.paper+' · '+S.unit+' · '+(S.mix ? 'mixed pages' : tplName(S.tpl).toLowerCase());
+  $('#subline').textContent = (S.preset !== 'custom' && pn ? pn.split(' · ')[0] : 'Custom size')+' · '+(S.mix ? 'Mixed pages' : tplName(S.tpl))+' · on '+pl.paper;
 }
 
 function bindPreview(){

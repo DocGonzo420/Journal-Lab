@@ -30,7 +30,7 @@ Print the PDF at **100%** (or "Actual size"). "Fit to page" rescales the pages s
 - **Android (Chrome):** tap **Install app** at the top of the page, or the ⋮ menu, then **Install app**.
 - **Windows, Mac or Linux (Chrome or Edge):** click **Install app** at the top of the page, or the install icon in the address bar.
 
-Saved presets live on each device. To move a setup between devices, open **Save and share** and copy the settings text, or save a settings file.
+Saved presets live on each device and show up under **Presets** at the top of the settings, next to the starting points. To move a setup between devices, open **Save and share** and copy the settings text, or save a settings file.
 
 ## How it's built
 

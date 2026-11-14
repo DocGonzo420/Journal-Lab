@@ -1825,13 +1825,31 @@ function fitStage(){
   if(!svg || !cur || st.clientWidth === 0) return;
   const aw = Math.max(40, st.clientWidth - 24), ah = Math.max(40, st.clientHeight - 24);
   const k = Math.min(aw/cur.w, ah/cur.h);
-  svg.style.width = (cur.w*k)+'px'; svg.style.height = (cur.h*k)+'px';
-  // Thin lines shrunk to fit land between pixels and some look darker than others.
-  // Draw straight ones a whole number of screen pixels wide, snapped to the pixel grid.
   const dpr = window.devicePixelRatio || 1;
+  svg.style.width = (Math.round(cur.w*k*dpr)/dpr)+'px'; svg.style.height = (Math.round(cur.h*k*dpr)/dpr)+'px';
+  snapLines(svg, dpr);
+}
+
+/* Thin lines shrunk to fit land between screen pixels, and the ones that fall
+   half way get smeared over two pixels and look darker than the rest. Move each
+   straight line onto a whole screen pixel and make it a whole number of pixels
+   wide, so every rule in the preview looks the same. The PDF is not touched. */
+function snapLines(svg, dpr){
+  const r = svg.getBoundingClientRect();
+  if(!r.width || !r.height || !cur) return;
+  const sx = r.width*dpr/cur.w, sy = r.height*dpr/cur.h, ox = r.left*dpr, oy = r.top*dpr;
+  const at = (v, sc, o, odd) => { const d = v*sc + o; return ((odd ? Math.floor(d) + 0.5 : Math.round(d)) - o)/sc; };
   for(const p of svg.querySelectorAll('path.ax')){
-    const dev = Math.max(1, Math.round(parseFloat(p.dataset.lw)*k*dpr));
-    p.setAttribute('stroke-width', (dev/dpr/k).toFixed(4));
+    if(!p.__d) p.__d = p.getAttribute('d');
+    const dev = Math.max(1, Math.round(parseFloat(p.getAttribute('data-lw'))*Math.min(sx, sy)));
+    const odd = dev % 2 === 1;
+    p.setAttribute('d', p.__d.replace(/M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)/g, (m, a, b, c, e) => {
+      let x1 = +a, y1 = +b, x2 = +c, y2 = +e;
+      if(Math.abs(y1 - y2) < 1e-6){ y1 = y2 = at(y1, sy, oy, odd); }
+      else { x1 = x2 = at(x1, sx, ox, odd); }
+      return 'M'+x1.toFixed(4)+' '+y1.toFixed(4)+'L'+x2.toFixed(4)+' '+y2.toFixed(4);
+    }));
+    p.setAttribute('stroke-width', (dev/Math.min(sx, sy)).toFixed(4));
     p.setAttribute('shape-rendering', 'crispEdges');
   }
 }
@@ -1879,7 +1897,8 @@ function bindPreview(){
     if(!c) fitStage();
   };
   if(window.ResizeObserver) new ResizeObserver(fitStage).observe($('#stage'));
-  else window.addEventListener('resize', fitStage);
+  window.addEventListener('resize', fitStage);
+  let snapRaf = 0; window.addEventListener('scroll', () => { cancelAnimationFrame(snapRaf); snapRaf = requestAnimationFrame(() => { const g = $('#stage svg'); if(g) snapLines(g, window.devicePixelRatio || 1); }); }, {passive:true});
 }
 
 /* ---------- export ---------- */

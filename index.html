@@ -246,7 +246,7 @@ const DEFAULTS = {
   w:148, h:210, preset:'a5', unit:'mm',
   tpl:'dots',
   spacings:{dots:5, grid:5, lgrid:5, cross:5, iso:5, isodots:5, lined:7, cornell:7, checklist:9, habit:7, tracker:9},
-  lgArm:60, lgShape:'l', crossArm:40,
+  lgArm:60, lgShape:'l', crossArm:40, patV:'auto', patH:'auto',
   tpTitle:'My Journal', tpSub:'', tpLine:'', tpV:'center', tpAlign:'center', tpSize:32, tpSubSize:13,
   tpCase:'normal', tpBold:true, tpRule:'line', tpRulePos:'between', tpRuleW:'short', tpFrame:'none', tpFields:'none',
   weight:0.4, intensity:70, color:'#6b7280',
@@ -287,6 +287,7 @@ function sanitize(s){
   s.headerNote = String(s.headerNote || '').slice(0,60);
   s.pageNumPlace = s.pageNumPlace === 'header' ? 'header' : 'footer';
   if(!['mood','reading','log'].includes(s.trackKind)) s.trackKind = 'mood';
+  s.patV = ['top','middle','bottom'].includes(s.patV) ? s.patV : 'auto'; s.patH = ['left','center','right'].includes(s.patH) ? s.patH : 'auto';
   s.lgArm = Math.round(num(s.lgArm,60,15,100)); s.lgShape = s.lgShape === 'cross' ? 'cross' : 'l';
   s.crossArm = Math.round(num(s.crossArm,40,10,100));
   for(const k of ['tpTitle','tpSub','tpLine']) s[k] = String(s[k] == null ? DEFAULTS[k] : s[k]).slice(0,60);
@@ -463,6 +464,17 @@ function fit(a0, len, sp, anchor){
   return [st, Math.max(0, Math.floor((a0 + len - st)/sp + 1e-9) + 1)];
 }
 
+/* Same as fit, but the person can push the pattern to one side of the area.
+   mode: 'start' (top or left), 'end' (bottom or right), anything else centres.
+   A shared cut line still wins, so patterns keep reading across the cut. */
+function alignAt(a0, len, sp, anchor, mode){
+  if(anchor != null || (mode !== 'start' && mode !== 'end')) return fit(a0, len, sp, anchor);
+  const n = Math.floor(len/sp + 1e-9) + 1;
+  return [mode === 'start' ? a0 : a0 + len - (n-1)*sp, n];
+}
+const vMode = s => s.patV === 'top' ? 'start' : s.patV === 'bottom' ? 'end' : 'center';
+const hMode = s => s.patH === 'left' ? 'start' : s.patH === 'right' ? 'end' : 'center';
+
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -533,14 +545,14 @@ const TPL = {
 
   dots(s,B,C){
     const sp = spacing(s);
-    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const [ox, cols] = alignAt(B.x, B.w, sp, C.ax, hMode(s)), [oy, rows] = alignAt(B.y, B.h, sp, C.ay, vMode(s));
     const r = dotRadius(s.weight);
     for(let j=0;j<rows;j++) for(let i=0;i<cols;i++) C.ops.push(D(ox+i*sp, oy+j*sp, r, C.line));
   },
 
   grid(s,B,C){
     const sp = spacing(s);
-    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const [ox, cols] = alignAt(B.x, B.w, sp, C.ax, hMode(s)), [oy, rows] = alignAt(B.y, B.h, sp, C.ay, vMode(s));
     const x2 = ox + (cols-1)*sp, y2 = oy + (rows-1)*sp;
     for(let i=0;i<cols;i++) C.ops.push(L(ox+i*sp, oy, ox+i*sp, y2, C.lw, C.line));
     for(let j=0;j<rows;j++) C.ops.push(L(ox, oy+j*sp, x2, oy+j*sp, C.lw, C.line));
@@ -551,7 +563,7 @@ const TPL = {
      L marks join into a grid with open top and right edges. */
   lgrid(s,B,C){
     const sp = spacing(s);
-    const [ox, cols] = fit(B.x, B.w, sp, C.ax), [oy, rows] = fit(B.y, B.h, sp, C.ay);
+    const [ox, cols] = alignAt(B.x, B.w, sp, C.ax, hMode(s)), [oy, rows] = alignAt(B.y, B.h, sp, C.ay, vMode(s));
     const a = sp*s.lgArm/100;
     if(s.lgShape === 'cross'){
       const h = a/2;
@@ -575,7 +587,7 @@ const TPL = {
      and lines at 30 degrees either way, trimmed to the outer vertical lines. */
   iso(s,B,C){
     const a = spacing(s), h = a*Math.sqrt(3)/2, m = 1/Math.sqrt(3);
-    const [ox, cols] = fit(B.x, B.w, h, C.ax), [oy] = fit(B.y, B.h, a, C.ay);
+    const [ox, cols] = alignAt(B.x, B.w, h, C.ax, hMode(s)), [oy] = alignAt(B.y, B.h, a, C.ay, vMode(s));
     if(cols < 2) return;
     const xa = ox, xb = ox + (cols-1)*h, ya = B.y, yb = B.y + B.h, e = 1e-9;
     for(let i=0;i<cols;i++) C.ops.push(L(ox+i*h, ya, ox+i*h, yb, C.lw, C.line));
@@ -596,7 +608,7 @@ const TPL = {
      column shifted half a step. */
   isodots(s,B,C){
     const a = spacing(s), h = a*Math.sqrt(3)/2, r = dotRadius(s.weight);
-    const [ox, cols] = fit(B.x, B.w, h, C.ax), [oy] = fit(B.y, B.h, a, C.ay);
+    const [ox, cols] = alignAt(B.x, B.w, h, C.ax, hMode(s)), [oy] = alignAt(B.y, B.h, a, C.ay, vMode(s));
     for(let i=0;i<cols;i++){
       const off = i % 2 ? a/2 : 0;
       let y = oy + off - a*Math.floor((oy + off - B.y)/a + 1e-9);
@@ -607,6 +619,8 @@ const TPL = {
   lined(s,B,C){
     const sp = spacing(s);
     let y0 = B.y + sp, n = Math.floor(B.h/sp + 1e-9);
+    if(s.patV === 'bottom') y0 = B.y + B.h - (n-1)*sp;
+    else if(s.patV === 'middle') y0 = B.y + (B.h - (n-1)*sp)/2;
     if(C.ay != null) [y0, n] = fit(B.y, B.h, sp, C.ay);
     for(let i=0;i<n;i++) C.ops.push(L(B.x, y0+i*sp, B.x+B.w, y0+i*sp, C.lw, C.line));
     if(s.marginLine){ const mx = C.marginX != null ? C.marginX : B.x + Math.min(20, B.w*0.15); C.ops.push(L(mx, B.y, mx, y0+(n-1)*sp, C.lw, C.line)); }
@@ -1358,6 +1372,9 @@ const SECTIONS = [
     {id:'tpFields', t:'select', label:'Fill-in lines at the bottom', opts:[['none','None'],['name','Name'],['dates','From and to dates'],['both','Name and dates']], key:'tpFields', show:s=>uses(s,'title')},
     {id:'tpHint', t:'hint', text:'The title page uses the header font from the Fonts section and the ink colour above. It has no header or page number, but it still counts as a page. Tick Mix page types to put it in front of other pages.', show:s=>uses(s,'title')},
     {id:'marginLine', t:'check', label:'Vertical margin line', key:'marginLine', show:s=>uses(s,'lined')},
+    {id:'patV', t:'seg', label:'Pattern starts from', opts:[['auto','Auto'],['top','Top'],['middle','Middle'],['bottom','Bottom']], key:'patV', show:s=>['dots','grid','cross','lgrid','iso','isodots','lined'].some(t => uses(s,t))},
+    {id:'patH', t:'seg', label:'Across the page', opts:[['auto','Auto'],['left','Left'],['center','Centre'],['right','Right']], key:'patH', show:s=>['dots','grid','cross','lgrid','iso','isodots'].some(t => uses(s,t))},
+    {id:'patHint', t:'hint', text:s=>'Auto centres grids and dots, and starts ruled lines one line below the top. Any space left over goes to the other side.'+(s.bleedOn && s.shareCuts ? ' Pages that share a cut line keep the pattern lined up across the cut instead.' : ''), show:s=>['dots','grid','cross','lgrid','iso','isodots','lined'].some(t => uses(s,t))},
     {id:'cueW', t:'len', label:'Cue column', key:'cueW', min:15, max:120, show:s=>uses(s,'cornell')},
     {id:'summaryH', t:'len', label:'Summary height', key:'summaryH', min:15, max:120, show:s=>uses(s,'cornell')},
     {id:'cornellLines', t:'check', label:'Ruled lines in notes and summary', key:'cornellLines', show:s=>uses(s,'cornell')},
